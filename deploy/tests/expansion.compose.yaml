@@ -1,0 +1,37 @@
+name: kontur-expansion-test
+services:
+  mysql-test:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: disposable-test-only
+      MYSQL_DATABASE: kontur_verify_expansion
+      MYSQL_USER: kontur
+      MYSQL_PASSWORD: disposable-test-only
+    command: ["--log-bin-trust-function-creators=1"]
+    tmpfs: [/var/lib/mysql]
+    healthcheck:
+      test: ["CMD-SHELL", "MYSQL_PWD=$$MYSQL_ROOT_PASSWORD mysqladmin ping -h 127.0.0.1 -u root --silent"]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+    networks: [isolated]
+  expansion-test:
+    build:
+      context: ../..
+      dockerfile: deploy/tests/mysql-recovery.Dockerfile
+    command: ["sh", "-ec", "node scripts/migrate.mjs && node scripts/seed.mjs && node scripts/expansion-mysql-check.mjs"]
+    environment:
+      KONTUR_DISPOSABLE_MYSQL_TEST: "1"
+      MYSQL_HOST: mysql-test
+      MYSQL_DATABASE: kontur_verify_expansion
+      MYSQL_USER: kontur
+      MYSQL_PASSWORD: disposable-test-only
+      ADMIN_EMAIL: integration-test@example.invalid
+      ADMIN_PASSWORD: disposable-test-only-123
+      AUTH_SECRET: disposable-test-encryption-only
+    depends_on:
+      mysql-test: {condition: service_healthy}
+    networks: [isolated]
+networks:
+  isolated:
+    internal: true

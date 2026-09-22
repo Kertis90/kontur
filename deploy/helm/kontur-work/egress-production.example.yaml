@@ -1,0 +1,14 @@
+# Сохраните в Secret как EGRESS_CONFIG_BODY. Ключи и Redis совпадают с LiveKit.
+api_key: kontur-production-key
+api_secret: replace-with-at-least-32-random-characters
+ws_url: ws://kontur-work-livekit:7880
+insecure: true
+enable_chrome_sandbox: true
+redis:
+  address: redis-master.cache.svc.cluster.local:6379
+  username: ""
+  password: replace-with-redis-password
+health_port: 8080
+prometheus_port: 9090
+session_limits:
+  file_output_max_duration: 12h

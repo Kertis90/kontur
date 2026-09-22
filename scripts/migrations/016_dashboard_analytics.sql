@@ -1,0 +1,12 @@
+ALTER TABLE dashboards ADD COLUMN revision INT UNSIGNED NOT NULL DEFAULT 1,
+ ADD COLUMN share_group_id BIGINT UNSIGNED NULL, ADD COLUMN is_template BOOLEAN NOT NULL DEFAULT FALSE,
+ ADD CONSTRAINT fk_dashboard_share_group FOREIGN KEY(share_group_id) REFERENCES access_groups(id) ON DELETE RESTRICT;
+CREATE TABLE dashboard_subscriptions (
+ user_id BIGINT UNSIGNED NOT NULL, dashboard_id BIGINT UNSIGNED NOT NULL,
+ enabled BOOLEAN NOT NULL DEFAULT FALSE, frequency ENUM('daily','weekly') NOT NULL DEFAULT 'weekly',
+ timezone VARCHAR(100) NOT NULL DEFAULT 'UTC', delivery_hour TINYINT UNSIGNED NOT NULL DEFAULT 9,
+ weekday TINYINT UNSIGNED NOT NULL DEFAULT 1, last_sent_at DATETIME NULL, last_attempt_at DATETIME NULL,
+ last_error VARCHAR(500) NULL, revision INT UNSIGNED NOT NULL DEFAULT 1,
+ PRIMARY KEY(user_id,dashboard_id), FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE,
+ FOREIGN KEY(dashboard_id) REFERENCES dashboards(id) ON DELETE CASCADE
+);

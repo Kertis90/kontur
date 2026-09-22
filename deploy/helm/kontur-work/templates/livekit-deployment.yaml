@@ -1,0 +1,130 @@
+{{- if .Values.livekit.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kontur-work.fullname" . }}-livekit
+  labels:
+    {{- include "kontur-work.labels" . | nindent 4 }}
+    app.kubernetes.io/component: livekit
+spec:
+  replicas: {{ .Values.livekit.replicas }}
+  revisionHistoryLimit: 3
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 0
+  selector:
+    matchLabels:
+      {{- include "kontur-work.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: livekit
+  template:
+    metadata:
+      labels:
+        {{- include "kontur-work.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: livekit
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: {{ .Values.livekit.prometheusPort | quote }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+    spec:
+      serviceAccountName: {{ include "kontur-work.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      hostNetwork: true
+      dnsPolicy: ClusterFirstWithHostNet
+      terminationGracePeriodSeconds: {{ .Values.livekit.terminationGracePeriodSeconds }}
+      containers:
+        - name: livekit
+          image: "{{ .Values.livekit.image.repository }}:{{ .Values.livekit.image.tag }}"
+          imagePullPolicy: {{ .Values.livekit.image.pullPolicy }}
+          args: ["--config-body", "$(LIVEKIT_CONFIG)"]
+          env:
+            - name: LIVEKIT_CONFIG
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "kontur-work.secretName" . }}
+                  key: LIVEKIT_CONFIG
+          ports:
+            - name: signal
+              containerPort: 7880
+              hostPort: 7880
+              protocol: TCP
+            - name: ice-tcp
+              containerPort: {{ .Values.livekit.rtc.tcpPort }}
+              hostPort: {{ .Values.livekit.rtc.tcpPort }}
+              protocol: TCP
+            - name: ice-udp
+              containerPort: {{ .Values.livekit.rtc.udpPort }}
+              hostPort: {{ .Values.livekit.rtc.udpPort }}
+              protocol: UDP
+            {{- if .Values.livekit.turn.enabled }}
+            - name: turn-udp
+              containerPort: {{ .Values.livekit.turn.udpPort }}
+              hostPort: {{ .Values.livekit.turn.udpPort }}
+              protocol: UDP
+            {{- if .Values.livekit.turn.tls.enabled }}
+            - name: turn-tls
+              containerPort: {{ .Values.livekit.turn.tls.port }}
+              hostPort: {{ .Values.livekit.turn.tls.port }}
+              protocol: TCP
+            {{- end }}
+            {{- end }}
+            - name: metrics
+              containerPort: {{ .Values.livekit.prometheusPort }}
+              protocol: TCP
+          startupProbe:
+            tcpSocket:
+              port: signal
+            periodSeconds: 3
+            failureThreshold: 40
+          readinessProbe:
+            tcpSocket:
+              port: signal
+            periodSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            tcpSocket:
+              port: signal
+            initialDelaySeconds: 20
+            periodSeconds: 15
+            failureThreshold: 5
+          resources:
+            {{- toYaml .Values.livekit.resources | nindent 12 }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          {{- if .Values.livekit.turn.tls.enabled }}
+          volumeMounts:
+            - name: turn-tls
+              mountPath: /etc/livekit/tls
+              readOnly: true
+          {{- end }}
+      {{- if .Values.livekit.turn.tls.enabled }}
+      volumes:
+        - name: turn-tls
+          secret:
+            secretName: {{ required "livekit.turn.tls.secretName обязателен для TURN/TLS" .Values.livekit.turn.tls.secretName }}
+      {{- end }}
+      nodeSelector:
+        {{- toYaml .Values.livekit.nodeSelector | nindent 8 }}
+      {{- with .Values.livekit.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- if .Values.livekit.affinity }}
+      affinity:
+        {{- toYaml .Values.livekit.affinity | nindent 8 }}
+      {{- else }}
+      affinity:
+        podAntiAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            - topologyKey: kubernetes.io/hostname
+              labelSelector:
+                matchLabels:
+                  {{- include "kontur-work.selectorLabels" . | nindent 18 }}
+                  app.kubernetes.io/component: livekit
+      {{- end }}
+{{- end }}
+

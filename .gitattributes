@@ -1,0 +1,10 @@
+* text=auto eol=lf
+
+# Migration checksums depend on the original bytes, including line endings.
+scripts/migrations/*.sql -text
+*.png binary
+*.ico binary
+*.jpg binary
+*.jpeg binary
+*.woff2 binary
+*.zip binary

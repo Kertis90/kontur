@@ -1,0 +1,32 @@
+{{- if and .Values.livekit.enabled .Values.livekit.autoscaling.enabled }}
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "kontur-work.fullname" . }}-livekit
+  labels:
+    {{- include "kontur-work.labels" . | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "kontur-work.fullname" . }}-livekit
+  minReplicas: {{ .Values.livekit.autoscaling.minReplicas }}
+  maxReplicas: {{ .Values.livekit.autoscaling.maxReplicas }}
+  behavior:
+    scaleUp:
+      stabilizationWindowSeconds: 15
+      policies:
+        - type: Pods
+          value: 2
+          periodSeconds: 60
+    scaleDown:
+      stabilizationWindowSeconds: 600
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ .Values.livekit.autoscaling.targetCPUUtilizationPercentage }}
+{{- end }}
+

@@ -1,0 +1,24 @@
+{{- if .Values.livekit.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "kontur-work.fullname" . }}-livekit
+  labels:
+    {{- include "kontur-work.labels" . | nindent 4 }}
+    app.kubernetes.io/component: livekit
+spec:
+  type: ClusterIP
+  ports:
+    - name: signal
+      port: 7880
+      targetPort: signal
+      protocol: TCP
+    - name: metrics
+      port: {{ .Values.livekit.prometheusPort }}
+      targetPort: metrics
+      protocol: TCP
+  selector:
+    {{- include "kontur-work.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: livekit
+{{- end }}
+

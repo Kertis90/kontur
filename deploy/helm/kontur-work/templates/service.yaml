@@ -1,0 +1,23 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "kontur-work.fullname" . }}
+  labels:
+    app.kubernetes.io/component: app
+    kontur-metrics-job: kontur-work
+    {{- include "kontur-work.labels" . | nindent 4 }}
+  {{- with .Values.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ .Values.service.type }}
+  ports:
+    - name: http
+      port: {{ .Values.service.port }}
+      targetPort: http
+      protocol: TCP
+  selector:
+    {{- include "kontur-work.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: app
+

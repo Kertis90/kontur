@@ -1,0 +1,32 @@
+name: kontur-mysql-recovery-test
+services:
+  mysql-test:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: disposable-test-only
+      MYSQL_ROOT_HOST: "%"
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+      - --log-bin-trust-function-creators=0
+    tmpfs:
+      - /var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "MYSQL_PWD=$$MYSQL_ROOT_PASSWORD mysqladmin ping -h 127.0.0.1 -u root --silent"]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+    networks: [isolated]
+  recovery-test:
+    build:
+      context: ../..
+      dockerfile: deploy/tests/mysql-recovery.Dockerfile
+    environment:
+      KONTUR_DISPOSABLE_MYSQL_TEST: "1"
+    depends_on:
+      mysql-test:
+        condition: service_healthy
+    networks: [isolated]
+networks:
+  isolated:
+    internal: true

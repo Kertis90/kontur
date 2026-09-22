@@ -1,0 +1,30 @@
+{{- if .Values.podDisruptionBudget.app.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "kontur-work.fullname" . }}-app
+  labels:
+    {{- include "kontur-work.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.podDisruptionBudget.app.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "kontur-work.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: app
+{{- end }}
+{{- if .Values.podDisruptionBudget.worker.enabled }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "kontur-work.fullname" . }}-worker
+  labels:
+    {{- include "kontur-work.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.podDisruptionBudget.worker.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "kontur-work.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: worker
+{{- end }}
+

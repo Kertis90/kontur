@@ -1,0 +1,33 @@
+{{- if and .Values.livekit.enabled .Values.livekit.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "kontur-work.fullname" . }}-livekit
+  labels:
+    {{- include "kontur-work.labels" . | nindent 4 }}
+    app.kubernetes.io/component: livekit
+  {{- with .Values.livekit.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- with .Values.livekit.ingress.className }}
+  ingressClassName: {{ . }}
+  {{- end }}
+  tls:
+    - secretName: {{ required "livekit.signalTlsSecretName обязателен" .Values.livekit.signalTlsSecretName }}
+      hosts:
+        - {{ required "livekit.signalHost обязателен" .Values.livekit.signalHost | quote }}
+  rules:
+    - host: {{ .Values.livekit.signalHost | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "kontur-work.fullname" . }}-livekit
+                port:
+                  name: signal
+{{- end }}
+

@@ -1,0 +1,45 @@
+{
+  "name": "kontur-work",
+  "version": "0.18.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.13.0"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build --webpack",
+    "quality": "node scripts/quality-check.mjs",
+    "test:conferences": "node --experimental-vm-modules --test scripts/conference-collaboration.test.mjs",
+    "check": "npm run quality && npm run build",
+    "start": "node scripts/start.mjs",
+    "worker": "node scripts/worker.mjs",
+    "db:migrate": "node scripts/migrate.mjs",
+    "db:status": "node scripts/migrate.mjs --status",
+    "db:seed": "node scripts/seed.mjs",
+    "test:ai-access-recordings": "node --experimental-vm-modules --test scripts/ai-access-recordings.test.mjs",
+    "test": "node --experimental-vm-modules --test scripts/*.test.mjs",
+    "worker:recordings": "node scripts/recording-worker.mjs",
+    "test:work": "node --experimental-vm-modules --test scripts/work-management.test.mjs",
+    "push:keys": "node scripts/generate-web-push-keys.mjs",
+    "allure:import": "node scripts/import-allure.mjs"
+  },
+  "dependencies": {
+    "bcryptjs": "^3.0.2",
+    "bullmq": "^6.3.4",
+    "ioredis": "^6.0.0",
+    "jose": "^6.1.0",
+    "ldapts": "^8.1.0",
+    "livekit-client": "^2.22.2",
+    "livekit-server-sdk": "^2.18.0",
+    "minio": "^8.0.7",
+    "mysql2": "^3.14.5",
+    "next": "16.2.6",
+    "nodemailer": "^7.0.6",
+    "react": "19.2.6",
+    "react-dom": "19.2.6",
+    "web-push": "3.6.7",
+    "yjs": "^13.6.32",
+    "zod": "^3.25.76"
+  }
+}

@@ -1,0 +1,39 @@
+# Override for host development. Start ONLY mysql redis minio minio-init livekit.
+# docker compose -p kontur-dev -f compose.yaml -f compose.dev.yaml up -d mysql redis minio minio-init livekit
+services:
+  mysql:
+    ports:
+      - "127.0.0.1:3306:3306"
+  redis:
+    ports:
+      - "127.0.0.1:6379:6379"
+  minio:
+    # Compose merges this API binding with the base console binding on 9001.
+    ports:
+      - "127.0.0.1:9000:9000"
+  livekit:
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      LIVEKIT_CONFIG: |
+        port: 7880
+        bind_addresses:
+          - "0.0.0.0"
+        rtc:
+          tcp_port: 7881
+          udp_port: 7882
+          use_external_ip: false
+        redis:
+          address: redis:6379
+        keys:
+          ${LIVEKIT_API_KEY:-kontur-local-key}: ${LIVEKIT_API_SECRET:?Set LIVEKIT_API_SECRET in .env}
+        turn:
+          enabled: true
+          udp_port: 3478
+        room:
+          auto_create: false
+        webhook:
+          api_key: ${LIVEKIT_API_KEY:-kontur-local-key}
+          urls:
+            - http://host.docker.internal:3000/api/livekit/webhook
+        prometheus_port: 6789

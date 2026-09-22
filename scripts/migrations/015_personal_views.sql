@@ -1,0 +1,10 @@
+CREATE TABLE user_work_views (
+ user_id BIGINT UNSIGNED PRIMARY KEY, revision INT UNSIGNED NOT NULL DEFAULT 1, config_json JSON NOT NULL,
+ FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE TABLE task_undo_actions (
+ id CHAR(36) PRIMARY KEY, user_id BIGINT UNSIGNED NOT NULL, task_id BIGINT UNSIGNED NOT NULL,
+ version_number INT UNSIGNED NOT NULL, before_json JSON NOT NULL, expires_at DATETIME NOT NULL, used_at DATETIME NULL,
+ FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE, FOREIGN KEY(task_id) REFERENCES tasks(id) ON DELETE CASCADE,
+ KEY(user_id,expires_at)
+);

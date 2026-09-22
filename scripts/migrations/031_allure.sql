@@ -1,0 +1,20 @@
+CREATE TABLE allure_connections (
+ id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+ workspace_id BIGINT UNSIGNED NOT NULL, project_id BIGINT UNSIGNED NOT NULL, plan_id BIGINT UNSIGNED NOT NULL,
+ name VARCHAR(160) NOT NULL, report_base_url VARCHAR(1000) NOT NULL DEFAULT '',
+ key_strategy ENUM('historyId','fullName','testCaseId') NOT NULL DEFAULT 'historyId',
+ create_missing BOOLEAN NOT NULL DEFAULT FALSE, enabled BOOLEAN NOT NULL DEFAULT TRUE,
+ revision INT UNSIGNED NOT NULL DEFAULT 1, created_by BIGINT UNSIGNED NOT NULL,
+ created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP, updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+ KEY(workspace_id,project_id), FOREIGN KEY(workspace_id) REFERENCES workspaces(id),
+ FOREIGN KEY(project_id) REFERENCES projects(id), FOREIGN KEY(plan_id) REFERENCES quality_plans(id), FOREIGN KEY(created_by) REFERENCES users(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;
+CREATE TABLE allure_imports (
+ id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY, connection_id BIGINT UNSIGNED NOT NULL,
+ run_id BIGINT UNSIGNED NOT NULL, external_id VARCHAR(160) CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+ fingerprint CHAR(64) NOT NULL, report_url VARCHAR(1000) NOT NULL DEFAULT '',
+ summary_json JSON NOT NULL, results_json JSON NOT NULL, created_by BIGINT UNSIGNED NOT NULL,
+ created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+ UNIQUE KEY(connection_id,external_id), UNIQUE KEY(run_id),
+ FOREIGN KEY(connection_id) REFERENCES allure_connections(id), FOREIGN KEY(run_id) REFERENCES quality_runs(id), FOREIGN KEY(created_by) REFERENCES users(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_0900_ai_ci;

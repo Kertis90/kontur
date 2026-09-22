@@ -1,0 +1,111 @@
+{
+  "uid": "kontur-operations",
+  "title": "Контур · эксплуатация",
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": {
+    "from": "now-6h",
+    "to": "now"
+  },
+  "timezone": "browser",
+  "__inputs": [
+    {
+      "name": "DS_PROMETHEUS",
+      "label": "Prometheus",
+      "type": "datasource",
+      "pluginId": "prometheus",
+      "pluginName": "Prometheus"
+    }
+  ],
+  "panels": [
+    {
+      "id": 1,
+      "title": "Доступность компонентов",
+      "type": "stat",
+      "gridPos": {
+        "x": 0,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "min by (dependency) (kontur_dependency_up)",
+          "legendFormat": "{{dependency}}{{component}}{{queue}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "Активные обработчики",
+      "type": "stat",
+      "gridPos": {
+        "x": 12,
+        "y": 0,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max by (component) (kontur_worker_instances)",
+          "legendFormat": "{{dependency}}{{component}}{{queue}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Операции в очередях",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 0,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max by (queue) (kontur_queue_items)",
+          "legendFormat": "{{dependency}}{{component}}{{queue}}"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Возраст старейшей операции, секунды",
+      "type": "timeseries",
+      "gridPos": {
+        "x": 12,
+        "y": 8,
+        "w": 12,
+        "h": 8
+      },
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max by (queue) (kontur_queue_oldest_seconds)",
+          "legendFormat": "{{dependency}}{{component}}{{queue}}"
+        }
+      ]
+    }
+  ]
+}

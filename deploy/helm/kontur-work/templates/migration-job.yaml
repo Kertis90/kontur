@@ -1,0 +1,95 @@
+{{- if .Values.migration.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "kontur-work.fullname" . }}-migrate
+  labels:
+    {{- include "kontur-work.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migration
+  annotations:
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "0"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: {{ .Values.migration.backoffLimit }}
+  ttlSecondsAfterFinished: {{ .Values.migration.ttlSecondsAfterFinished }}
+  template:
+    metadata:
+      labels:
+        {{- include "kontur-work.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: migration
+    spec:
+      restartPolicy: Never
+      automountServiceAccountToken: false
+      securityContext:
+        {{- include "kontur-work.podSecurityContext" . | nindent 8 }}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: migrate
+          image: {{ include "kontur-work.image" . | quote }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          command: ["/bin/sh", "-ec"]
+          args:
+            - >-
+              node scripts/migrate.mjs{{ if or .Values.migration.seed .Values.admin.createOnInstall }} &&
+              node scripts/seed.mjs{{ end }}
+          securityContext:
+            {{- include "kontur-work.containerSecurityContext" . | nindent 12 }}
+          env:
+            - name: MYSQL_HOST
+              value: {{ .Values.database.host | quote }}
+            - name: MYSQL_PORT
+              value: {{ .Values.database.port | quote }}
+            - name: MYSQL_DATABASE
+              value: {{ .Values.database.name | quote }}
+            - name: MYSQL_USER
+              value: {{ .Values.database.user | quote }}
+            - name: MYSQL_PASSWORD
+              {{- if .Values.secrets.existingSecret }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "kontur-work.secretName" . }}
+                  key: MYSQL_PASSWORD
+              {{- else }}
+              value: {{ required "database.password обязателен, если secrets.existingSecret не задан" .Values.database.password | quote }}
+              {{- end }}
+            - name: MYSQL_SSL
+              value: {{ .Values.database.ssl.enabled | quote }}
+            - name: MYSQL_SSL_REJECT_UNAUTHORIZED
+              value: {{ .Values.database.ssl.rejectUnauthorized | quote }}
+            {{- with .Values.database.ssl.ca }}
+            - name: MYSQL_SSL_CA
+              value: {{ . | quote }}
+            {{- end }}
+            {{- if or .Values.migration.seed .Values.admin.createOnInstall }}
+            - name: ADMIN_EMAIL
+              value: {{ .Values.admin.email | quote }}
+            - name: ADMIN_NAME
+              value: {{ .Values.admin.name | quote }}
+            - name: ADMIN_PASSWORD
+              {{- if .Values.secrets.existingSecret }}
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "kontur-work.secretName" . }}
+                  key: ADMIN_PASSWORD
+              {{- else }}
+              value: {{ required "admin.password обязателен при создании администратора" .Values.admin.password | quote }}
+              {{- end }}
+            {{- end }}
+          resources:
+            requests:
+              cpu: 100m
+              memory: 192Mi
+            limits:
+              cpu: "1"
+              memory: 512Mi
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+{{- end }}

@@ -1,0 +1,27 @@
+{{- if .Values.monitoring.enabled }}
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "kontur-work.fullname" . }}
+  labels:
+    {{- include "kontur-work.labels" . | nindent 4 }}
+    {{- with .Values.monitoring.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  jobLabel: kontur-metrics-job
+  selector:
+    matchLabels:
+      app.kubernetes.io/component: app
+      {{- include "kontur-work.selectorLabels" . | nindent 6 }}
+  endpoints:
+    - port: http
+      path: /api/work/operations/metrics
+      interval: 30s
+      scrapeTimeout: 10s
+      authorization:
+        type: Bearer
+        credentials:
+          name: {{ required "monitoring.tokenSecret обязателен" .Values.monitoring.tokenSecret | quote }}
+          key: token
+{{- end }}

@@ -1,0 +1,30 @@
+port: 7880
+bind_addresses:
+  - "0.0.0.0"
+rtc:
+  tcp_port: 7881
+  udp_port: 7882
+  use_external_ip: true
+redis:
+  address: redis-master.cache.svc.cluster.local:6379
+  username: ""
+  password: replace-with-redis-password
+keys:
+  kontur-production-key: replace-with-at-least-32-random-characters
+turn:
+  enabled: true
+  udp_port: 3478
+  domain: turn.company.ru
+  tls_port: 5349
+  cert_file: /etc/livekit/tls/tls.crt
+  key_file: /etc/livekit/tls/tls.key
+prometheus_port: 6789
+
+
+webhook:
+  api_key: kontur-production-key
+  urls:
+    - https://work.company.ru/api/livekit/webhook
+
+room:
+  auto_create: false

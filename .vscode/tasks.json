@@ -1,0 +1,92 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Контур: установить зависимости",
+      "type": "shell",
+      "command": "npm ci",
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Контур: dev-инфраструктура — запуск",
+      "type": "process",
+      "command": "docker",
+      "args": ["compose", "-p", "kontur-dev", "-f", "compose.yaml", "-f", "compose.dev.yaml", "up", "-d", "mysql", "redis", "minio", "minio-init", "livekit"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Контур: dev-инфраструктура — остановка",
+      "type": "process",
+      "command": "docker",
+      "args": ["compose", "-p", "kontur-dev", "-f", "compose.yaml", "-f", "compose.dev.yaml", "stop"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Контур: БД — статус",
+      "type": "process",
+      "command": "node",
+      "args": ["--env-file=.env", "scripts/migrate.mjs", "--status"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Контур: БД — применить миграции",
+      "type": "process",
+      "command": "node",
+      "args": ["--env-file=.env", "scripts/migrate.mjs"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Контур: БД — seed владельца и demo",
+      "type": "process",
+      "command": "node",
+      "args": ["--env-file=.env", "scripts/seed.mjs"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Контур: dev-сервер",
+      "type": "shell",
+      "command": "npm run dev -- --hostname 127.0.0.1",
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": [],
+      "presentation": { "panel": "dedicated", "reveal": "always" }
+    },
+    {
+      "label": "Контур: worker",
+      "type": "process",
+      "command": "node",
+      "args": ["--env-file=.env", "scripts/worker.mjs"],
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": [],
+      "presentation": { "panel": "dedicated", "reveal": "always" }
+    },
+    {
+      "label": "Контур: все тесты",
+      "type": "shell",
+      "command": "npm test",
+      "options": { "cwd": "${workspaceFolder}" },
+      "group": { "kind": "test", "isDefault": true },
+      "problemMatcher": []
+    },
+    {
+      "label": "Контур: quality",
+      "type": "shell",
+      "command": "npm run quality",
+      "options": { "cwd": "${workspaceFolder}" },
+      "problemMatcher": []
+    },
+    {
+      "label": "Контур: production build",
+      "type": "shell",
+      "command": "npm run build",
+      "options": { "cwd": "${workspaceFolder}" },
+      "group": { "kind": "build", "isDefault": true },
+      "problemMatcher": []
+    }
+  ]
+}

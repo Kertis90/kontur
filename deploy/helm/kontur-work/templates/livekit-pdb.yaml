@@ -1,0 +1,15 @@
+{{- if and .Values.livekit.enabled .Values.livekit.podDisruptionBudget.enabled }}
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "kontur-work.fullname" . }}-livekit
+  labels:
+    {{- include "kontur-work.labels" . | nindent 4 }}
+spec:
+  minAvailable: {{ .Values.livekit.podDisruptionBudget.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "kontur-work.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: livekit
+{{- end }}
+

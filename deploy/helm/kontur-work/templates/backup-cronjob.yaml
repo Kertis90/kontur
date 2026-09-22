@@ -1,0 +1,84 @@
+{{- if .Values.backup.enabled }}
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "kontur-work.fullname" . }}-backup
+  labels:
+    {{- include "kontur-work.labels" . | nindent 4 }}
+spec:
+  schedule: {{ .Values.backup.schedule | quote }}
+  timeZone: Etc/UTC
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 1800
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: {{ .Values.backup.timeoutSeconds }}
+      template:
+        metadata:
+          labels:
+            {{- include "kontur-work.selectorLabels" . | nindent 12 }}
+            app.kubernetes.io/component: backup
+        spec:
+          restartPolicy: Never
+          automountServiceAccountToken: false
+          securityContext:
+            runAsUser: 1001
+            runAsGroup: 1001
+            fsGroup: 1001
+          {{- with .Values.imagePullSecrets }}
+          imagePullSecrets:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumes:
+            - name: work
+              emptyDir:
+                sizeLimit: {{ .Values.backup.workSize | quote }}
+          initContainers:
+            - name: dump
+              image: {{ .Values.backup.mysqlImage | quote }}
+              command: ["sh", "-ec"]
+              args:
+                - |
+                  umask 077
+                  case "$MYSQL_DATABASE" in ''|*[!a-zA-Z0-9_]*) exit 2;; esac
+                  export MYSQL_PWD="$MYSQL_PASSWORD"
+                  if [ -n "${MYSQL_SSL_CA:-}" ]; then printf '%s' "$MYSQL_SSL_CA" > /work/mysql-ca.pem; set -- --ssl-ca=/work/mysql-ca.pem; else set --; fi
+                  mysqldump "$@" --host="$MYSQL_HOST" --port="$MYSQL_PORT" --user="$MYSQL_USER" --ssl-mode={{ .Values.backup.mysqlSslMode }} --single-transaction --quick --no-tablespaces --set-gtid-purged=OFF --hex-blob --routines --events "$MYSQL_DATABASE" > /work/database.sql
+              envFrom:
+                - configMapRef:
+                    name: {{ include "kontur-work.fullname" . }}
+                - secretRef:
+                    name: {{ required "backup.secretName обязателен" .Values.backup.secretName | quote }}
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities: {drop: [ALL]}
+              resources:
+                {{- toYaml .Values.backup.resources | nindent 16 }}
+              volumeMounts:
+                - {name: work, mountPath: /work}
+          containers:
+            - name: encrypt-upload
+              image: {{ include "kontur-work.image" . | quote }}
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              command: ["sh", "-ec"]
+              args:
+                - 'node scripts/backup.mjs backup --input-sql /work/database.sql --output "/work/kontur-$(date -u +%Y%m%dT%H%M%SZ).kbk" --s3'
+              envFrom:
+                - configMapRef:
+                    name: {{ include "kontur-work.fullname" . }}
+                - secretRef:
+                    name: {{ .Values.backup.secretName | quote }}
+              env:
+                - name: BACKUP_S3_BUCKET
+                  value: {{ required "backup.bucket обязателен" .Values.backup.bucket | quote }}
+              securityContext:
+                allowPrivilegeEscalation: false
+                capabilities: {drop: [ALL]}
+              resources:
+                {{- toYaml .Values.backup.resources | nindent 16 }}
+              volumeMounts:
+                - {name: work, mountPath: /work}
+{{- end }}

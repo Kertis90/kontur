@@ -1,0 +1,61 @@
+{
+  "format": "kontur.agent.v2",
+  "name": "Анализ проекта с проверкой",
+  "config": {
+    "profile_id": "589196e2-160c-410e-8342-a4cbd67b7bda",
+    "instructions": "Составь итог по проверенным фактам. Фокус: {{inputs.focus}}. Учти замечания проверяющего шага. Указывай источники.",
+    "trigger": {
+      "type": "manual"
+    },
+    "sources": {
+      "tasks": {
+        "enabled": true,
+        "limit": 30,
+        "fields": [
+          "title",
+          "priority",
+          "due_date",
+          "stage_id",
+          "progress"
+        ]
+      },
+      "quality": {
+        "enabled": false
+      }
+    },
+    "inputs": [
+      {
+        "key": "focus",
+        "label": "Фокус анализа",
+        "type": "string",
+        "required": true,
+        "default": "Риски и сроки"
+      }
+    ],
+    "flow": {
+      "max_calls": 3,
+      "nodes": [
+        {
+          "id": "analysis",
+          "name": "Анализ",
+          "type": "analyze",
+          "prompt": "Проанализируй задачи. Фокус: {{inputs.focus}}. Укажи подтверждённые риски.",
+          "fields": []
+        },
+        {
+          "id": "review",
+          "name": "Проверка",
+          "type": "analyze",
+          "prompt": "Проверь выводы анализа по источникам. Отметь неподтверждённые выводы и недостающие данные.",
+          "fields": []
+        }
+      ]
+    },
+    "actions": [],
+    "mode": "review",
+    "policy": {
+      "require_citations": true,
+      "min_confidence": 0.7
+    }
+  }
+}

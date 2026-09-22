@@ -1,0 +1,55 @@
+{
+  "name": "Контур — управление работой",
+  "short_name": "Контур",
+  "description": "Проекты, задачи, дашборды и коммуникации в защищённой self-hosted системе.",
+  "lang": "ru",
+  "start_url": "/?source=pwa",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#f2f3f5",
+  "theme_color": "#ffffff",
+  "categories": [
+    "business",
+    "productivity"
+  ],
+  "icons": [
+    {
+      "src": "/icons/kontur-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/kontur-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icons/kontur-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "id": "/",
+  "shortcuts": [
+    {
+      "name": "Чат и встречи",
+      "short_name": "Чат",
+      "url": "/?view=chat",
+      "icons": [
+        {
+          "src": "/icons/kontur-192.png",
+          "sizes": "192x192",
+          "type": "image/png"
+        }
+      ]
+    },
+    {
+      "name": "Мои дашборды",
+      "url": "/?view=dashboards"
+    }
+  ]
+}

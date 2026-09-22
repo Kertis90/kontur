@@ -1,0 +1,100 @@
+{{- if .Values.recordings.enabled }}
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kontur-work.fullname" . }}-egress
+  labels:
+    {{- include "kontur-work.labels" . | nindent 4 }}
+    app.kubernetes.io/component: egress
+spec:
+  replicas: {{ .Values.recordings.egress.replicas }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 1
+  selector:
+    matchLabels:
+      {{- include "kontur-work.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: egress
+  template:
+    metadata:
+      labels:
+        {{- include "kontur-work.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: egress
+      annotations:
+        {{- if not .Values.secrets.existingSecret }}
+        checksum/secret: {{ include (print $.Template.BasePath "/secret.yaml") . | sha256sum }}
+        {{- end }}
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: {{ .Values.recordings.egress.terminationGracePeriodSeconds }}
+      containers:
+        - name: egress
+          image: {{ .Values.recordings.egress.image | quote }}
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            capabilities:
+              add: [SYS_ADMIN]
+          env:
+            - name: EGRESS_CONFIG_BODY
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "kontur-work.secretName" . }}
+                  key: EGRESS_CONFIG_BODY
+          ports:
+            - name: health
+              containerPort: 8080
+            - name: metrics
+              containerPort: 9090
+          readinessProbe:
+            httpGet:
+              path: /
+              port: health
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /
+              port: health
+            initialDelaySeconds: 60
+            periodSeconds: 30
+            failureThreshold: 5
+          resources:
+            {{- toYaml .Values.recordings.egress.resources | nindent 12 }}
+          volumeMounts:
+            - name: shm
+              mountPath: /dev/shm
+      volumes:
+        - name: shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 1Gi
+      {{- with .Values.recordings.egress.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.recordings.egress.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      topologySpreadConstraints:
+        - maxSkew: 1
+          topologyKey: kubernetes.io/hostname
+          whenUnsatisfiable: ScheduleAnyway
+          labelSelector:
+            matchLabels:
+              {{- include "kontur-work.selectorLabels" . | nindent 14 }}
+              app.kubernetes.io/component: egress
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "kontur-work.fullname" . }}-egress
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      {{- include "kontur-work.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: egress
+{{- end }}

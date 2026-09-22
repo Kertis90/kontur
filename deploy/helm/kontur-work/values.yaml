@@ -1,0 +1,286 @@
+image:
+  repository: registry.example.ru/kontur-work
+  tag: "0.18.0"
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+app:
+  replicas: 3
+  url: https://projects.example.ru
+  port: 3000
+  maxAttachmentBytes: 26214400
+  mysqlPoolSize: 12
+  terminationGracePeriodSeconds: 60
+  resources:
+    requests:
+      cpu: 200m
+      memory: 384Mi
+    limits:
+      cpu: "2"
+      memory: 1Gi
+
+worker:
+  replicas: 2
+  concurrency: 8
+  aiConcurrency: 2
+  outboxPollMs: 2000
+  resources:
+    requests:
+      cpu: 150m
+      memory: 256Mi
+    limits:
+      cpu: "2"
+      memory: 1Gi
+
+recordings:
+  enabled: true
+  retentionDays: 0
+  workerReplicas: 2
+  concurrency: 1
+  maxTranscribeGB: 20
+  tempSize: 24Gi
+  workerResources:
+    requests:
+      cpu: '1'
+      memory: 512Mi
+      ephemeral-storage: 24Gi
+    limits:
+      cpu: '2'
+      memory: 2Gi
+      ephemeral-storage: 26Gi
+  egress:
+    # Для production задайте проверенный digest: livekit/egress@sha256:...
+    image: livekit/egress:latest
+    replicas: 2
+    wsUrl: ''
+    insecure: true
+    terminationGracePeriodSeconds: 43200
+    nodeSelector: {}
+    tolerations: []
+    resources:
+      requests:
+        cpu: '4'
+        memory: 4Gi
+      limits:
+        cpu: '6'
+        memory: 6Gi
+
+database:
+  # External MySQL: with binlog enabled, migrations 013/014 need
+  # log_bin_trust_function_creators=1 or an authorized privileged migrator.
+  # The chart never changes global database permissions/settings. See DATABASE-UPGRADES.md.
+  host: mysql-primary.database.svc.cluster.local
+  port: 3306
+  name: kontur_work
+  user: kontur
+  password: ""
+  ssl:
+    enabled: false
+    rejectUnauthorized: true
+    ca: ""
+
+redis:
+  url: redis://redis-master.cache.svc.cluster.local:6379
+
+s3:
+  endpoint: https://s3.example.ru
+  region: ru-1
+  bucket: kontur-attachments
+  forcePathStyle: false
+  accessKey: ""
+  secretKey: ""
+
+communications:
+  speechToText:
+    enabled: false
+    apiUrl: ""
+    apiKey: ""
+    model: whisper-1
+    language: ru
+    timeoutMs: 120000
+  telephony:
+    enabled: false
+    apiUrl: ""
+    apiToken: ""
+    webhookSecret: ""
+    fromNumber: ""
+    timeoutMs: 15000
+
+# LiveKit работает как SFU: один поток докладчика принимается медиасервером и
+# раздаётся зрителям. Один pod обслуживает комнату целиком; для большой встречи
+# выделите media-ноду, на которой одна комната помещается по CPU/сети.
+livekit:
+  enabled: true
+  image:
+    repository: livekit/livekit-server
+    tag: v1.13.6
+    pullPolicy: IfNotPresent
+  replicas: 3
+  apiKey: ""
+  apiSecret: ""
+  apiUrl: ""
+  publicUrl: wss://media.example.ru
+  signalHost: media.example.ru
+  signalTlsSecretName: kontur-livekit-signal-tls
+  redis:
+    address: redis-master.cache.svc.cluster.local:6379
+    username: ""
+    password: ""
+  rtc:
+    tcpPort: 7881
+    udpPort: 7882
+    useExternalIP: true
+  turn:
+    enabled: true
+    udpPort: 3478
+    tls:
+      enabled: true
+      port: 5349
+      domain: turn.example.ru
+      secretName: kontur-livekit-turn-tls
+  prometheusPort: 6789
+  terminationGracePeriodSeconds: 18000
+  resources:
+    requests:
+      cpu: "8"
+      memory: 8Gi
+    limits:
+      cpu: "16"
+      memory: 16Gi
+  nodeSelector:
+    workload: livekit-media
+  tolerations: []
+  affinity: {}
+  ingress:
+    enabled: true
+    className: nginx
+    annotations:
+      nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+      nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+  autoscaling:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 20
+    targetCPUUtilizationPercentage: 55
+  podDisruptionBudget:
+    enabled: true
+    minAvailable: 2
+
+secrets:
+  existingSecret: ""
+  authSecret: ""
+  encryptionKey: ""
+
+admin:
+  createOnInstall: false
+  email: admin@example.ru
+  name: Администратор
+  password: ""
+
+migration:
+  enabled: true
+  seed: false
+  backoffLimit: 3
+  ttlSecondsAfterFinished: 3600
+
+tests:
+  enabled: true
+
+serviceAccount:
+  create: true
+  name: ""
+  annotations: {}
+
+service:
+  type: ClusterIP
+  port: 80
+  annotations: {}
+
+ingress:
+  enabled: true
+  className: nginx
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-body-size: 25m
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "90"
+  hosts:
+    - host: projects.example.ru
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: kontur-work-tls
+      hosts:
+        - projects.example.ru
+
+autoscaling:
+  app:
+    enabled: true
+    minReplicas: 3
+    maxReplicas: 12
+    targetCPUUtilizationPercentage: 70
+    targetMemoryUtilizationPercentage: 80
+  worker:
+    enabled: true
+    minReplicas: 2
+    maxReplicas: 8
+    targetCPUUtilizationPercentage: 75
+
+podDisruptionBudget:
+  app:
+    enabled: true
+    minAvailable: 2
+  worker:
+    enabled: true
+    minAvailable: 1
+
+networkPolicy:
+  # Для media pod с hostNetwork правила зависят от CNI; сначала проверьте ICE/TURN.
+  enabled: false
+  ingressNamespaceSelector: {}
+
+podAnnotations: {}
+podLabels: {}
+nodeSelector: {}
+tolerations: []
+affinity: {}
+topologySpreadConstraints:
+  app: []
+  worker: []
+extraEnv: []
+
+# Точные hostname внутренних HTTPS-получателей, разделённые запятыми.
+integrations:
+  allowedPrivateHosts: ""
+
+# Requires the Prometheus Operator CRDs and a dedicated operations:read token.
+monitoring:
+  enabled: false
+  tokenSecret: ""
+  labels: {}
+  namespaceSelector:
+    matchLabels:
+      kubernetes.io/metadata.name: monitoring
+
+# Backup secrets are separate from application credentials.
+backup:
+  enabled: false
+  schedule: "0 2 * * *"
+  timeoutSeconds: 7200
+  mysqlImage: mysql:8.4
+  mysqlSslMode: VERIFY_IDENTITY
+  secretName: ""
+  bucket: ""
+  workSize: 20Gi
+  resources:
+    requests: {cpu: 100m, memory: 256Mi}
+    limits: {cpu: "1", memory: 1Gi}
+
+# One VAPID key pair shared by app and worker replicas; see docs/PWA-AND-CHAT.md.
+webPush:
+  enabled: false
+  publicKey: ""
+  privateKey: "" # Prefer WEB_PUSH_PRIVATE_KEY in secrets.existingSecret.
+  subject: "mailto:admin@example.ru"

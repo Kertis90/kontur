@@ -1,0 +1,325 @@
+x-kontur-image: &kontur-image
+  image: ${KONTUR_IMAGE:-kontur-work:local}
+  build:
+    context: .
+    dockerfile: Dockerfile
+
+x-app-environment: &app-environment
+  NODE_ENV: production
+  WEB_PUSH_ENABLED: ${WEB_PUSH_ENABLED:-false}
+  WEB_PUSH_PUBLIC_KEY: ${WEB_PUSH_PUBLIC_KEY:-}
+  WEB_PUSH_PRIVATE_KEY: ${WEB_PUSH_PRIVATE_KEY:-}
+  WEB_PUSH_SUBJECT: ${WEB_PUSH_SUBJECT:-}
+  INTEGRATION_ALLOWED_PRIVATE_HOSTS: ${INTEGRATION_ALLOWED_PRIVATE_HOSTS:-}
+  MYSQL_HOST: mysql
+  MYSQL_PORT: 3306
+  MYSQL_DATABASE: ${MYSQL_DATABASE:-kontur_work}
+  MYSQL_USER: ${MYSQL_USER:-kontur}
+  MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+  MYSQL_POOL_SIZE: ${MYSQL_POOL_SIZE:-12}
+  MYSQL_CONNECT_TIMEOUT: ${MYSQL_CONNECT_TIMEOUT:-10000}
+  MYSQL_SSL: ${MYSQL_SSL:-false}
+  MYSQL_SSL_REJECT_UNAUTHORIZED: ${MYSQL_SSL_REJECT_UNAUTHORIZED:-true}
+  MYSQL_SSL_CA: ${MYSQL_SSL_CA:-}
+  AUTH_SECRET: ${AUTH_SECRET}
+  APP_ENCRYPTION_KEY: ${APP_ENCRYPTION_KEY}
+  APP_URL: ${APP_URL:-http://localhost:3000}
+  REDIS_URL: redis://redis:6379
+  AI_WORKER_CONCURRENCY: ${AI_WORKER_CONCURRENCY:-2}
+  RECORDING_ENABLED: ${RECORDING_ENABLED:-true}
+  RECORDING_RETENTION_DAYS: ${RECORDING_RETENTION_DAYS:-0}
+  RECORDING_WORKER_CONCURRENCY: ${RECORDING_WORKER_CONCURRENCY:-1}
+  RECORDING_TRANSCRIBE_MAX_GB: ${RECORDING_TRANSCRIBE_MAX_GB:-20}
+  S3_ENDPOINT: ${S3_ENDPOINT:-http://minio:9000}
+  S3_REGION: ${S3_REGION:-us-east-1}
+  S3_ACCESS_KEY: ${S3_ACCESS_KEY:-kontur-minio}
+  S3_SECRET_KEY: ${S3_SECRET_KEY}
+  S3_BUCKET: ${S3_BUCKET:-kontur-attachments}
+  S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-true}
+  MAX_ATTACHMENT_BYTES: ${MAX_ATTACHMENT_BYTES:-26214400}
+  LIVEKIT_API_URL: http://livekit:7880
+  LIVEKIT_WS_URL: ${LIVEKIT_WS_URL:-ws://localhost:7880}
+  LIVEKIT_API_KEY: ${LIVEKIT_API_KEY:-kontur-local-key}
+  LIVEKIT_API_SECRET: ${LIVEKIT_API_SECRET}
+  STT_API_URL: ${STT_API_URL:-}
+  STT_API_KEY: ${STT_API_KEY:-}
+  STT_MODEL: ${STT_MODEL:-whisper-1}
+  STT_LANGUAGE: ${STT_LANGUAGE:-ru}
+  STT_TIMEOUT_MS: ${STT_TIMEOUT_MS:-120000}
+  TELEPHONY_API_URL: ${TELEPHONY_API_URL:-}
+  TELEPHONY_API_TOKEN: ${TELEPHONY_API_TOKEN:-}
+  TELEPHONY_WEBHOOK_SECRET: ${TELEPHONY_WEBHOOK_SECRET:-}
+  TELEPHONY_FROM_NUMBER: ${TELEPHONY_FROM_NUMBER:-}
+  TELEPHONY_TIMEOUT_MS: ${TELEPHONY_TIMEOUT_MS:-15000}
+  ADMIN_EMAIL: ${ADMIN_EMAIL:-admin@example.ru}
+  ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+  ADMIN_NAME: ${ADMIN_NAME:-Администратор}
+  AUTO_MIGRATE: "false"
+  AUTO_SEED: "false"
+
+services:
+  mysql:
+    image: mysql:8.4
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${MYSQL_DATABASE:-kontur_work}
+      MYSQL_USER: ${MYSQL_USER:-kontur}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD:?Set MYSQL_PASSWORD in .env}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD:?Set MYSQL_ROOT_PASSWORD in .env}
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_0900_ai_ci
+      # Migrations 013/014 create triggers as the database-scoped application user.
+      - --log-bin-trust-function-creators=1
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    networks: [kontur]
+
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+    networks: [kontur]
+
+  minio:
+    image: minio/minio:latest
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${S3_ACCESS_KEY:-kontur-minio}
+      MINIO_ROOT_PASSWORD: ${S3_SECRET_KEY:?Set S3_SECRET_KEY in .env}
+    volumes:
+      - minio_data:/data
+    ports:
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    networks: [kontur]
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      S3_ACCESS_KEY: ${S3_ACCESS_KEY:-kontur-minio}
+      S3_SECRET_KEY: ${S3_SECRET_KEY}
+      S3_BUCKET: ${S3_BUCKET:-kontur-attachments}
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        mc alias set local http://minio:9000 "$${S3_ACCESS_KEY}" "$${S3_SECRET_KEY}"
+        mc mb --ignore-existing "local/$${S3_BUCKET}"
+        mc anonymous set none "local/$${S3_BUCKET}"
+    networks: [kontur]
+
+  livekit:
+    image: livekit/livekit-server:v1.13.6
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      LIVEKIT_CONFIG: |
+        port: 7880
+        bind_addresses:
+          - "0.0.0.0"
+        rtc:
+          tcp_port: 7881
+          udp_port: 7882
+          use_external_ip: ${LIVEKIT_USE_EXTERNAL_IP:-false}
+        redis:
+          address: redis:6379
+        keys:
+          ${LIVEKIT_API_KEY:-kontur-local-key}: ${LIVEKIT_API_SECRET:?Set LIVEKIT_API_SECRET in .env}
+        turn:
+          enabled: true
+          udp_port: 3478
+        room:
+          auto_create: false
+        webhook:
+          api_key: ${LIVEKIT_API_KEY:-kontur-local-key}
+          urls:
+            - http://app:3000/api/livekit/webhook
+        prometheus_port: 6789
+    ports:
+      - "${LIVEKIT_SIGNAL_PORT:-7880}:7880/tcp"
+      - "${LIVEKIT_ICE_TCP_PORT:-7881}:7881/tcp"
+      - "${LIVEKIT_ICE_UDP_PORT:-7882}:7882/udp"
+      - "${LIVEKIT_TURN_UDP_PORT:-3478}:3478/udp"
+      - "127.0.0.1:${LIVEKIT_METRICS_PORT:-6789}:6789/tcp"
+    security_opt:
+      - no-new-privileges:true
+    networks: [kontur]
+
+  egress:
+    image: ${LIVEKIT_EGRESS_IMAGE:-livekit/egress:latest}
+    restart: unless-stopped
+    depends_on:
+      redis:
+        condition: service_healthy
+      livekit:
+        condition: service_started
+      minio-init:
+        condition: service_completed_successfully
+    cap_add: [SYS_ADMIN]
+    shm_size: 1gb
+    stop_grace_period: 1h
+    environment:
+      EGRESS_CONFIG_BODY: |
+        api_key: ${LIVEKIT_API_KEY:-kontur-local-key}
+        api_secret: ${LIVEKIT_API_SECRET}
+        ws_url: ws://livekit:7880
+        insecure: true
+        enable_chrome_sandbox: true
+        redis:
+          address: redis:6379
+        health_port: 8080
+        prometheus_port: 9090
+        session_limits:
+          file_output_max_duration: 12h
+    deploy:
+      resources:
+        reservations:
+          cpus: '4'
+          memory: 4G
+        limits:
+          cpus: '6'
+          memory: 6G
+    networks: [kontur]
+
+  recording-worker:
+    <<: *kontur-image
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 60s
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    environment:
+      <<: *app-environment
+      APP_PROCESS: recording-worker
+    security_opt:
+      - no-new-privileges:true
+    networks: [kontur]
+
+  migrate:
+    <<: *kontur-image
+    restart: "no"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    entrypoint: ["/bin/sh", "-ec"]
+    command: ["node scripts/migrate.mjs && node scripts/seed.mjs"]
+    environment: *app-environment
+    security_opt:
+      - no-new-privileges:true
+    networks: [kontur]
+
+  app:
+    <<: *kontur-image
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 60s
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+      migrate:
+        condition: service_completed_successfully
+      livekit:
+        condition: service_started
+    environment: *app-environment
+    ports:
+      - "${APP_PORT:-3000}:3000"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+    security_opt:
+      - no-new-privileges:true
+    networks: [kontur]
+
+  worker:
+    <<: *kontur-image
+    restart: unless-stopped
+    init: true
+    stop_grace_period: 60s
+    depends_on:
+      mysql:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      <<: *app-environment
+      APP_PROCESS: worker
+    security_opt:
+      - no-new-privileges:true
+    networks: [kontur]
+
+  gateway:
+    image: caddy:2.10-alpine
+    profiles: [gateway]
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+      livekit:
+        condition: service_started
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN:-projects.example.ru}
+      LIVEKIT_DOMAIN: ${LIVEKIT_DOMAIN:-media.example.ru}
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    security_opt:
+      - no-new-privileges:true
+    networks: [kontur]
+
+volumes:
+  mysql_data:
+  redis_data:
+  minio_data:
+  caddy_data:
+  caddy_config:
+
+networks:
+  kontur:
+    driver: bridge

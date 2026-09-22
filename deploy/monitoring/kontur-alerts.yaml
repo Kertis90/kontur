@@ -1,0 +1,27 @@
+groups:
+  - name: kontur-work
+    rules:
+      - alert: KonturMetricsUnavailable
+        expr: up{job="kontur-work"} == 0
+        for: 3m
+        labels: {severity: critical}
+        annotations:
+          summary: "Контур: метрики недоступны, проверьте приложение и токен"
+      - alert: KonturDependencyUnavailable
+        expr: kontur_dependency_up == 0
+        for: 2m
+        labels: {severity: critical}
+        annotations:
+          summary: "Контур: компонент {{ $labels.dependency }} недоступен"
+      - alert: KonturWorkerMissing
+        expr: kontur_worker_instances == 0
+        for: 3m
+        labels: {severity: critical}
+        annotations:
+          summary: "Контур: отсутствует процесс {{ $labels.component }}"
+      - alert: KonturQueueLag
+        expr: kontur_queue_oldest_seconds{queue=~"outbox|integrations|jira|semantic"} > 600
+        for: 5m
+        labels: {severity: warning}
+        annotations:
+          summary: "Контур: очередь {{ $labels.queue }} отстаёт более 10 минут"
