@@ -11,18 +11,20 @@ concurrency:
   cancel-in-progress: true
 jobs:
   application:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
       NEXT_TELEMETRY_DISABLED: '1'
       BROWSER_PRODUCTION: '1'
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
         with:
           node-version: '22'
           cache: npm
       - run: npm ci
+      - name: Установить обработчик аудио для тестов конференций
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - run: npm test
       - run: npm run quality
       - run: npm run build
@@ -33,7 +35,7 @@ jobs:
       - run: npm run test:jira:mysql
       - run: npm run test:backup:mysql
       - run: npm run test:browser
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: failure()
         with:
           name: browser-check
@@ -44,7 +46,7 @@ jobs:
       - if: always()
         run: docker compose -f deploy/tests/browser.compose.yaml --profile files down
   migrations:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     strategy:
       fail-fast: false
@@ -55,7 +57,7 @@ jobs:
           - file: mysql-recovery
             service: recovery-test
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       - run: docker compose -f deploy/tests/${{ matrix.file }}.compose.yaml up --build --abort-on-container-exit --exit-code-from ${{ matrix.service }}
       - if: always()
         run: docker compose -f deploy/tests/${{ matrix.file }}.compose.yaml down
