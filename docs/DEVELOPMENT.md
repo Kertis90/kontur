@@ -1,5 +1,40 @@
 # Разработка в VS Code
 
+## Автоматическая проверка поставки 0.19.0
+
+GitHub Actions выполняет серверные тесты, quality, сборку Node.js 22,
+проверки MySQL и браузера. Локальный одноразовый стенд имеет собственное
+имя `kontur-browser-check`, порты 13316/13379/13900/13300 и временные данные.
+Он не использует рабочие реквизиты из `.env`.
+
+```bash
+docker compose -f deploy/tests/browser.compose.yaml --profile files up -d --wait
+npm run test:browser:setup
+npm run test:jira:mysql
+npm run test:backup:mysql
+npm run build
+npx playwright install chromium
+npm run test:browser
+```
+
+По умолчанию браузерный тест запускает сервер разработки. Для проверки готовой
+сборки задайте `BROWSER_PRODUCTION=1` (PowerShell: `$env:BROWSER_PRODUCTION='1'`).
+Отчёт и снимки находятся в `playwright-report` и `test-results`, они исключены
+из Git. Проверка Jira подменяет только ответы внешнего сервера; MySQL, S3,
+создание задач, конфликты, аудит и фоновые проходы выполняются реально.
+Проверка копии сверяет строки, контрольные суммы таблиц и определения триггеров.
+
+После завершения удалите только этот одноразовый стенд:
+
+```bash
+docker compose -f deploy/tests/browser.compose.yaml --profile files down
+```
+
+Никогда не подставляйте рабочие реквизиты в эти тестовые скрипты. Контейнеры
+используют временные файловые системы; их остановка удаляет тестовые данные.
+
+## Основная среда разработки
+
 Команды выполняются в терминале **из корня репозитория**, где находятся
 `package.json` и `compose.yaml`. Нужны Node.js 22.13+, npm, Git и Docker Compose v2.
 `npm ci` использует комплектный `package-lock.json`; не начинайте перенос

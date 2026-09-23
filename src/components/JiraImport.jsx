@@ -1,8 +1,14 @@
 "use client";
 import {useEffect,useState} from 'react';
 import {workApi,useWork,useAction,Field,Select,ErrorLine,WorkHeader} from './WorkUI.jsx';
+import JiraTransfer from './JiraTransfer.jsx';
 const statuses={preview:'Предварительный просмотр',queued:'В очереди',running:'Выполняется',completed:'Завершён',failed:'Остановлен из-за ошибки',cancelled:'Отменён'};
+// Объединяет прямой переезд с Jira и прежний импорт подготовленных файлов.
 export default function JiraImport({data,notify,reload}){
+ return <><JiraTransfer data={data} notify={notify} reload={reload}/><details className="work-card"><summary>Импорт подготовленного JSON и файлов</summary><JiraFileImport data={data} notify={notify} reload={reload}/></details></>;
+}
+// Сохраняет прежний сценарий переноса из подготовленного экспорта без подключения к Jira.
+function JiraFileImport({data,notify,reload}){
  const projects=data.projects.filter(p=>data.permissions.projects[p.id]?.['task.create']),[input,setInput]=useState({project_id:projects[0]?.id,text:'',stages:{},include_attachments:true}),[plan,setPlan]=useState(null),[selected,setSelected]=useState(null),jobs=useWork('jira-imports'),job=useWork(selected?`jira-imports/${selected}`:null),[busy,act]=useAction(notify);
  useEffect(()=>{if(!['queued','running'].includes(job.value?.status))return;const timer=setInterval(()=>{job.reload();jobs.reload();},3000);return()=>clearInterval(timer);},[job.value?.status,job.reload,jobs.reload]);
  async function action(name){await workApi(`jira-imports/${selected}`,{method:'POST',body:JSON.stringify({action:name,revision:job.value.revision,preview_hash:job.value.preview_hash})});await job.reload();await jobs.reload();if(name==='start')notify('Импорт поставлен в очередь');}

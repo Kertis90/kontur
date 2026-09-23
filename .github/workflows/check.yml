@@ -1,0 +1,61 @@
+name: Проверки Контура
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: checks-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  application:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      NEXT_TELEMETRY_DISABLED: '1'
+      BROWSER_PRODUCTION: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm test
+      - run: npm run quality
+      - run: npm run build
+      - run: npx playwright install --with-deps chromium
+      - name: Одноразовые MySQL, Redis и файлы
+        run: docker compose -f deploy/tests/browser.compose.yaml --profile files up -d --wait
+      - run: npm run test:browser:setup
+      - run: npm run test:jira:mysql
+      - run: npm run test:backup:mysql
+      - run: npm run test:browser
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: browser-check
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+      - if: always()
+        run: docker compose -f deploy/tests/browser.compose.yaml --profile files down
+  migrations:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - file: expansion
+            service: expansion-test
+          - file: mysql-recovery
+            service: recovery-test
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker compose -f deploy/tests/${{ matrix.file }}.compose.yaml up --build --abort-on-container-exit --exit-code-from ${{ matrix.service }}
+      - if: always()
+        run: docker compose -f deploy/tests/${{ matrix.file }}.compose.yaml down

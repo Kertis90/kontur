@@ -28,3 +28,7 @@ secrets/
 *.zip
 *.tar.gz
 *.sql.gz
+
+# Результаты браузерных проверок могут содержать данные тестовых сеансов.
+playwright-report/
+test-results/

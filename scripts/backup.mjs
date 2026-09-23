@@ -4,6 +4,7 @@ import {stat,rm} from 'node:fs/promises';
 import {basename,resolve} from 'node:path';
 import {pipeline} from 'node:stream/promises';
 import {backupKey,encryptBackup,decryptBackup,fileSha256} from './backup-crypto.mjs';
+import {restoreSql} from './backup-sql.mjs';
 
 const [action,...args]=process.argv.slice(2),option=name=>{const i=args.indexOf(name);return i<0?null:args[i+1];};
 const database=value=>{if(!/^[a-zA-Z0-9_]{1,64}$/.test(value||''))throw new Error('Database name must contain only letters, digits and underscores');return value;};
@@ -14,6 +15,7 @@ function mysql(program,extra,{restore=false}={}){
  else{const host=process.env[`${prefix}MYSQL_HOST`]||(restore?'':'127.0.0.1');if(!host)throw new Error('RESTORE_MYSQL_HOST is required');if(restore&&host===(process.env.MYSQL_HOST||'127.0.0.1'))throw new Error('Restore requires an isolated MySQL server');const defaults=process.env[`${prefix}MYSQL_DEFAULTS_FILE`];params=[...(defaults?[`--defaults-extra-file=${defaults}`]:[]),`--host=${host}`,`--port=${process.env[`${prefix}MYSQL_PORT`]||3306}`,...flags,...extra];}
  const child=spawn(command,params,{env,stdio:['pipe','pipe','pipe']});child.stderr.resume();const done=new Promise((resolve,reject)=>{child.once('error',()=>reject(new Error(`${program} could not start`)));child.once('exit',code=>code===0?resolve():reject(new Error(`${program} exited unsuccessfully; inspect server permissions and connectivity`)));});done.catch(()=>{});return {child,done};
 }
+// Создаёт, проверяет или восстанавливает защищённую копию в явно выбранный отдельный сервер.
 async function main(){
  if(!['backup','verify','restore'].includes(action))throw new Error('Usage: node scripts/backup.mjs backup --output FILE [--compose | --input-sql FILE] [--s3] | verify --input FILE | restore --input FILE --database kontur_restore_NAME --isolated [--compose]');
  const key=backupKey(process.env.BACKUP_ENCRYPTION_KEY);
@@ -30,7 +32,7 @@ async function main(){
   if(action==='verify'){console.log(JSON.stringify({authenticated:true,sql_bytes:(await stat(sql)).size,sha256:await fileSha256(path),metadata}));return;}
   const target=database(option('--database'));if(!args.includes('--isolated')||!target.startsWith('kontur_restore_')||target===metadata.database)throw new Error('Restore requires --isolated and an empty kontur_restore_NAME database');
   const check=mysql('mysql',['--batch','--skip-column-names','--execute',`SELECT COUNT(*) FROM information_schema.tables WHERE table_schema='${target}'`,target],{restore:true});check.child.stdin.end();let result='';for await(const chunk of check.child.stdout)result+=chunk.toString();await check.done;if(result.trim()!=='0')throw new Error('Restore target is not empty');
-  const restore=mysql('mysql',[target],{restore:true});restore.child.stdout.resume();try{await pipeline(createReadStream(sql),restore.child.stdin);await restore.done;}catch(e){restore.child.kill('SIGTERM');throw e;}console.log(JSON.stringify({restored_to:target,source_database:metadata.database,note:'Run migration status and application checks before accepting the restore.'}));
+  const restore=mysql('mysql',['--binary-mode',target],{restore:true});restore.child.stdout.resume();try{await pipeline(createReadStream(sql),restoreSql,restore.child.stdin);await restore.done;}catch(e){restore.child.kill('SIGTERM');throw e;}console.log(JSON.stringify({restored_to:target,source_database:metadata.database,note:'Run migration status and application checks before accepting the restore.'}));
  });
 }
 main().catch(e=>{console.error(e.message);process.exitCode=1;});

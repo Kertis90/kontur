@@ -11,13 +11,16 @@ import {jiraExtras,jiraLink} from './jira-import-model.js';
 import {semanticHash} from './semantic-vectors.js';
 import {audit} from './audit.js';
 import {fieldAccess} from './work-access.js';
+import {jiraTransferApi} from './jira-transfer-api.js';
 async function actorFor(user,projectId,write=true){
  const actor=await one("SELECT * FROM users WHERE id=? AND workspace_id=? AND status='active'",[user.id,user.workspace_id]);
  if(!actor||!await apiBackgroundAllowed(actor,user.api_token_id,write?'imports:write':'imports:read'))throw new WorkError(403,'Доступ к импорту отозван');await workspaceFor(actor,'import.manage');await projectFor(actor,projectId,write?'task.create':'project.browse',write);return {...actor,api_token_id:user.api_token_id};
 }
 const decode=row=>JSON.parse(decryptSecret(row.payload_encrypted));
 async function ownJob(user,id){const j=await one('SELECT * FROM jira_import_jobs WHERE id=? AND workspace_id=? AND user_id=?',[positiveId.parse(id),user.workspace_id,user.id]);if(!j)throw new WorkError(404,'Импорт не найден');return j;}
+// Обслуживает импорт из файла и управляемый переезд с подключённого сервера Jira.
 export async function jiraImportApi(request,path,user){
+ if(path[1]==='sources')return jiraTransferApi(request,path,user);
  if(path[1]==='task'&&request.method==='GET'){
   const task=await one('SELECT t.id,t.project_id FROM tasks t JOIN projects p ON p.id=t.project_id WHERE t.id=? AND p.workspace_id=?',[positiveId.parse(path[2]),user.workspace_id]);if(!task)throw new WorkError(404,'Задача не найдена');await projectFor(user,task.project_id);
   const after=Number(new URL(request.url).searchParams.get('after')||0);if(!Number.isSafeInteger(after)||after<0)throw new WorkError(422,'Неверный курсор');const restricted=(await fieldAccess(user,task.project_id)).some(f=>!f.can_read);

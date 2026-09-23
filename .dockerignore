@@ -16,3 +16,8 @@ secrets
 *.tar.gz
 *.sql.gz
 .vscode
+playwright-report
+test-results
+coverage
+.backup-test-*
+*.kbk

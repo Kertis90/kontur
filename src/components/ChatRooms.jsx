@@ -5,6 +5,7 @@ import {chatRequest} from '../lib/chat-client.js';
 import {Field,ErrorLine,Empty,useAction} from './WorkUI.jsx';
 const labels={workspace:'Все сотрудники',project:'Участники проекта',invite:'По приглашению'};
 
+// Показывает комнаты и разрешает создание по действующим правам рабочего пространства.
 export default function ChatRooms({data,notify,onOpen,onChanged}){
  const [rooms,setRooms]=useState(null),[error,setError]=useState(''),[query,setQuery]=useState(''),[draft,setDraft]=useState(null);
  const [busy,act]=useAction(notify);
@@ -13,7 +14,7 @@ export default function ChatRooms({data,notify,onOpen,onChanged}){
  const visible=(rooms||[]).filter(r=>`${r.name} ${r.description} ${r.project_name||''}`.toLocaleLowerCase('ru').includes(query.toLocaleLowerCase('ru')));
  return <section className="rooms-page">
   <div className="rooms-heading"><div><h2>Комнаты</h2><p>Присоединяйтесь, когда удобно. Комната и история остаются, даже если все вышли.</p></div>
-   {data.permissions.workspace['chat.room.create']&&<button className="primary" onClick={()=>setDraft({name:'',description:'',join_policy:'workspace',project_id:null,invite_ids:[],archived:false})}>+ Создать комнату</button>}
+   {data.permissions.features?.['chat.room.create']&&<button className="primary" onClick={()=>setDraft({name:'',description:'',join_policy:'workspace',project_id:null,invite_ids:[],archived:false})}>+ Создать комнату</button>}
   </div>
   <label className="rooms-search"><span>Найти комнату</span><input type="search" value={query} onChange={e=>setQuery(e.target.value)} placeholder="Название, описание или проект"/></label>
   <ErrorLine error={error}/>{!rooms&&!error&&<p role="status">Загружаем комнаты…</p>}

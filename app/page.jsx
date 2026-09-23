@@ -1,5 +1,7 @@
 "use client";
 import WorkspaceCompanion from "../src/components/WorkspaceCompanion.jsx";
+import WorkspaceClock from "../src/components/WorkspaceClock.jsx";
+import GettingStarted from "../src/components/GettingStarted.jsx";
 import {clearDeviceOnLogout} from "../src/lib/browser-device.js";
 import AgentsView from "../src/components/AgentsView.jsx";
 import QualityView from "../src/components/QualityView.jsx";
@@ -28,6 +30,7 @@ const ROLE_LABELS = { owner: "Владелец", admin: "Администрат�
 const PRIORITY_LABELS = { critical: "Критический", high: "Высокий", medium: "Средний", low: "Низкий" };
 const FIELD_LABELS = { text: "Текст", number: "Число", date: "Дата", select: "Список", multiselect: "Множественный список", boolean: "Да/нет", user: "Пользователь", url: "Ссылка" };
 const NAV = [
+  ["start", "Начать работу", "check"],
   ["dashboard", "Обзор", "dashboard"],
   ["dashboards", "Мои дашборды", "fields"],
   ["projects", "Проекты", "folder"],
@@ -116,6 +119,7 @@ function avatar(name, color, size = "normal") {
   return <span className={`avatar ${size}`} style={{ background: color || "#675EE7" }}>{(name || "?").split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase()}</span>;
 }
 
+// Управляет рабочими разделами и настройкой организации; часы обновляются независимым компонентом.
 export default function Home() {
   const [data, setData] = useState(null);
   const [lastUndo,setLastUndo]=useState(null),[undoBusy,setUndoBusy]=useState(false),changeBusy=useRef(false);
@@ -131,7 +135,6 @@ export default function Home() {
   const [toast, setToast] = useState(null);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [clock, setClock] = useState(() => new Date());
   const [installPrompt, setInstallPrompt] = useState(null);
   const [linkedChannel, setLinkedChannel] = useState(null);
 
@@ -173,7 +176,6 @@ export default function Home() {
     return () => navigator.serviceWorker?.removeEventListener('message', receive);
   }, []);
   useEffect(() => { if (!toast) return; const timer = setTimeout(() => setToast(null), 3200); return () => clearTimeout(timer); }, [toast]);
-  useEffect(() => { const timer = setInterval(() => setClock(new Date()), 1000); return () => clearInterval(timer); }, []);
   useEffect(() => { if ("serviceWorker" in navigator) navigator.serviceWorker.register("/sw.js").catch(() => {}); const capture = (event) => { event.preventDefault(); setInstallPrompt(event); }; window.addEventListener("beforeinstallprompt", capture); return () => window.removeEventListener("beforeinstallprompt", capture); }, []);
 
   if (loading && !data) return <div className="boot"><div className="brand-mark"><Icon name="logo" size={24}/></div><div className="boot-line"><span/></div><p>Загружаем рабочее пространство…</p></div>;
@@ -188,6 +190,7 @@ export default function Home() {
   const projectPermissions = data.permissions.projects[String(project?.id)] || {};
   const features = data.permissions.features || {};
   const visibleNavigation = NAV.filter(([key]) => {
+    if (key === "start") return data.permissions.admin || data.permissions.manageProjects;
     if (["quality","objectives"].includes(key)) return Object.values(data.permissions.projects).some(rights => (key === "quality" ? ["qa.view","qa.manage","qa.execute"] : ["okr.view","okr.manage","okr.update"]).some(k=>rights[k]));
     if (key === "agents") return Object.values(data.permissions.projects).some(rights=>rights["agent.view"]);
     if (key === "integrations") return features["integration.view"] || features["integration.manage"] || features["calendar.connect"] || Object.values(data.permissions.projects).some(rights=>["qa.view","qa.manage","qa.execute"].some(key=>rights[key]));
@@ -240,13 +243,14 @@ export default function Home() {
         <div className="breadcrumbs"><button onClick={() => setView("dashboard")}>{data.workspace.name}</button><Icon name="chevron" size={13}/><button className="current" onClick={() => view === "admin" ? setView("dashboard") : setView(view)}>{NAV.find(([key]) => key === view)?.[1] || project?.name}</button></div>
         <label className="global-search"><Icon name="search" size={17}/><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Найти задачу…"/></label>
         <CommandPalette data={data} navigation={visibleNavigation} onNavigate={setView} onTask={setTaskDraft} onCreate={project && projectPermissions["task.create"]?()=>openNewTask():null}/>
-        <time className="browser-clock" dateTime={clock.toISOString()} title={Intl.DateTimeFormat().resolvedOptions().timeZone}>{clock.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</time>
+        <WorkspaceClock/>
         {installPrompt && <button className="install-button" onClick={async () => { await installPrompt.prompt(); setInstallPrompt(null); }}>Установить</button>}
         <button className={`icon-button notification-button ${data.notifications.some((item) => !item.read_at) ? "has-unread" : ""}`} onClick={() => setNotificationsOpen((value) => !value)} aria-label="Открыть уведомления" title="Уведомления"><Icon name="bell"/></button>
         {!['admin', 'knowledge', 'chat', 'dashboards', 'api', 'integrations', 'quality', 'objectives', 'agents'].includes(view) && projectPermissions["task.create"] && project && <button className="primary" onClick={() => openNewTask()}><Icon name="plus" size={17}/>Создать задачу</button>}
       </header>
 
       <div className="content">
+        {view === "start" && <GettingStarted data={data} notify={notify} reload={() => load(true)} onNewProject={() => setProjectDraft({template_id: null, name: "", key_code: "", description: "", group_id: data.groups[0]?.id || null, workflow_id: data.workflows[0]?.id, color: "#e30611", start_date: dateOffset(0), target_date: dateOffset(30)})} onNewTask={project && projectPermissions["task.create"] ? () => openNewTask() : null}/>}
         <UndoBanner action={lastUndo} busy={undoBusy} onUndo={undoTaskChange} onDismiss={()=>setLastUndo(null)}/>
         {view === "agents" && <AgentsView data={data} notify={notify}/>}
         {view === "quality" && <QualityView data={data} notify={notify} onTask={setTaskDraft}/>}
@@ -363,8 +367,10 @@ function GanttView({ project, tasks, stages, onOpen }) {
   return <div className="work-view"><div className="work-head"><div><span className="project-key">{project.key_code}</span><h1>Диаграмма Ганта</h1><p>{project.name} · планирование сроков и зависимостей</p></div><div className="gantt-legend"><span><i className="today-color"/>Сегодня</span><span><i className="milestone-color"/>Веха</span></div></div><div className="gantt-shell"><div className="gantt-names"><div className="gantt-name-head">Задача</div>{tasks.map((task) => <button key={task.id} onClick={() => onOpen({ ...task })}><span style={{ background: task.stage_color }}/><div><strong>{project.key_code}-{task.task_number} · {task.title}</strong><small>{task.assignee_name || "Не назначено"}</small></div></button>)}</div><div className="gantt-scroll"><div className="gantt-canvas" style={{ width: days.length * width }}><div className="gantt-days">{days.map((day, index) => <div key={index} className={[0, 6].includes(day.getDay()) ? "weekend" : ""} style={{ width }}><small>{day.toLocaleDateString("ru", { weekday: "narrow" })}</small><strong>{day.getDate()}</strong></div>)}</div><div className="gantt-grid">{days.map((day, index) => <span key={index} className={[0, 6].includes(day.getDay()) ? "weekend" : ""} style={{ left: index * width, width }}/>)}</div>{today >= 0 && today < days.length && <div className="today-line" style={{ left: today * width + width / 2 }}><span>Сегодня</span></div>}<div className="gantt-rows">{tasks.map((task) => { const offset = Math.max(0, daysBetween(startIso, task.start_date || task.due_date || startIso)); const duration = Math.max(1, daysBetween(task.start_date || task.due_date || startIso, task.due_date || task.start_date || startIso) + 1); const color = stages.find((s) => s.id === task.stage_id)?.color || "#675EE7"; return <div className="gantt-row" key={task.id}>{task.milestone ? <button className="gantt-milestone" style={{ left: offset * width + 10, background: color }} onClick={() => onOpen({ ...task })} aria-label={`Открыть веху «${task.title}»`} title={task.title}/> : <button className="gantt-bar" style={{ left: offset * width + 4, width: Math.max(28, duration * width - 8), background: color }} onClick={() => onOpen({ ...task })} title={task.title}><span>{task.title}</span></button>}</div>; })}</div></div></div></div></div>;
 }
 
+// Открывает разрешённый раздел администрирования, в том числе из пошаговой настройки.
 function AdminView({ data, reload, notify, onNewField, onEditField }) {
   const [tab, setTab] = useState("overview");
+  useEffect(() => {const section = new URLSearchParams(window.location.search).get('section');if (section) setTab(section);}, []);
   const features = data.permissions.features || {};
   const sections = [
     { key: "operations", label: "Состояние платформы", icon: "reports", permission: "operations.view", description: "Инфраструктура, обработчики и очереди" },

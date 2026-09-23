@@ -1,6 +1,7 @@
 "use client";
 import {useId,useRef,useState} from 'react';
 import {AGENT_NODE_LABELS} from '../lib/agent-catalog.js';
+// Отображает сценарий с перемещением блоков, связями и масштабом по фактическим границам схемы.
 export default function AgentCanvas({flow,onChange,selected,onSelect,steps=[]}){
  const [zoom,setZoom]=useState(.8),[pan,setPan]=useState({x:25,y:20}),[dragged,setDragged]=useState({}),[connection,setConnection]=useState(null),[hint,setHint]=useState('');
  const pointer=useRef(null),canvas=useRef(null),marker=useId().replace(/:/g,'');
@@ -14,7 +15,8 @@ export default function AgentCanvas({flow,onChange,selected,onSelect,steps=[]}){
  function start(e,id){if(readOnly||e.button!==0)return;e.preventDefault();e.stopPropagation();e.currentTarget.setPointerCapture(e.pointerId);pointer.current={id,x:e.clientX,y:e.clientY,origin:positions[id]};onSelect?.(id);}
  function move(e){const p=pointer.current;if(!p)return;if(p.id==='$pan'){setPan({x:p.origin.x+e.clientX-p.x,y:p.origin.y+e.clientY-p.y});return;}setDragged({[p.id]:{x:Math.max(0,Math.min(6000,Math.round(p.origin.x+(e.clientX-p.x)/zoom))),y:Math.max(70,Math.min(6000,Math.round(p.origin.y+(e.clientY-p.y)/zoom)))}});}
  function endDrag(){const p=pointer.current;if(p&&p.id!=='$pan'&&dragged[p.id])onChange({...flow,positions:{...flow.positions,[p.id]:dragged[p.id]}});pointer.current=null;setDragged({});}
- function fit(){const w=canvas.current?.clientWidth||700;setZoom(Math.max(.2,Math.min(1,(w-50)/width,460/height)));setPan({x:25,y:20});}
+ // Вписывает видимые блоки, не уменьшая короткую схему ради пустого пространства холста.
+ function fit(){const points=[...Object.values(positions),...terminal.map(node=>node.point)],left=Math.min(...points.map(p=>p.x)),top=Math.min(...points.map(p=>p.y)),right=Math.max(...points.map(p=>p.x+290)),bottom=Math.max(...points.map(p=>p.y+128)),w=canvas.current?.clientWidth||700,h=canvas.current?.clientHeight||460,next=Math.max(.2,Math.min(1,(w-40)/(right-left),(h-40)/(bottom-top)));setZoom(next);setPan({x:20-left*next,y:20-top*next});}
  return <section className="agent-canvas-shell" aria-label="Схема агента">
   <div className="canvas-toolbar"><strong>{readOnly?'Путь выполнения':'Карта сценария'}</strong><div><button type="button" className="secondary" onClick={()=>setZoom(Math.max(.2,zoom-.1))} aria-label="Уменьшить масштаб">−</button><output aria-label="Масштаб">{Math.round(zoom*100)}%</output><button type="button" className="secondary" onClick={()=>setZoom(Math.min(1.5,zoom+.1))} aria-label="Увеличить масштаб">+</button><button type="button" className="secondary" onClick={fit}>Вписать</button></div></div>
   <div className="agent-canvas" ref={canvas} onPointerDown={e=>{if(e.target!==e.currentTarget||e.button!==0)return;e.currentTarget.setPointerCapture(e.pointerId);pointer.current={id:'$pan',x:e.clientX,y:e.clientY,origin:pan};}} onPointerMove={move} onPointerUp={endDrag} onPointerCancel={endDrag} onKeyDown={e=>{if(e.key==='Escape'){setConnection(null);setHint('');}}}>

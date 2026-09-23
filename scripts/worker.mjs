@@ -2,6 +2,7 @@ import {enqueueAgentEvent,pollAgentRuns} from '../src/lib/agent-runtime.js';
 import {pollBrowserPush} from '../src/lib/browser-push.js';
 import {runtimeHeartbeat} from '../src/lib/runtime-heartbeat.js';
 import {pollJiraImports} from '../src/lib/work-jira-import.js';
+import {pollJiraTransfers} from '../src/lib/jira-transfer-worker.js';
 import {pollSemanticJobs} from '../src/lib/work-semantic.js';
 import {pollExternalSync} from '../src/lib/external-sync.js';
 import {scanSlaNotifications} from '../src/lib/sla-notifications.js';
@@ -176,7 +177,8 @@ function pollIntegrations(){
   return integrationPolling;
 }
 let jiraPolling=null;
-function pollJira(){if(jiraPolling)return jiraPolling;jiraPolling=pollJiraImports().catch(()=>console.error('Jira import polling failed')).finally(()=>{jiraPolling=null;});return jiraPolling;}
+// Продолжает импорт из файлов и поэтапный переезд Jira, не допуская пересечения проходов.
+function pollJira(){if(jiraPolling)return jiraPolling;jiraPolling=Promise.all([pollJiraImports(),pollJiraTransfers()]).catch(()=>console.error('Jira import polling failed')).finally(()=>{jiraPolling=null;});return jiraPolling;}
 let pushPolling=null;
 function pollPush(){if(pushPolling)return pushPolling;pushPolling=pollBrowserPush().catch(()=>console.error('Browser push polling failed')).finally(()=>{pushPolling=null;});return pushPolling;}
 let agentPolling=null;

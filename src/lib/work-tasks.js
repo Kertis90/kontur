@@ -10,7 +10,15 @@ export const taskChangeSchema=z.object({
   stage_id:positiveId.optional(),due_date:dateOnly.nullable().optional(),start_date:dateOnly.nullable().optional(),
   estimate_minutes:z.number().int().min(0).max(10000000).nullable().optional(),progress:z.number().int().min(0).max(100).optional(),
   custom_values:z.record(z.unknown()).optional(),
+  issue_type_id:positiveId.nullable().optional(),story_points:z.number().min(0).max(1000000).nullable().optional(),
 }).strict();
+// Проверяет тип задачи и принадлежность схеме выбранного проекта.
+async function validateTaskType(user,project,patch){
+  if(!patch.issue_type_id)return;
+  const type=await one('SELECT id FROM issue_types WHERE id=? AND workspace_id=? AND active=TRUE',[patch.issue_type_id,user.workspace_id]);
+  if(!type)throw new WorkError(422,'Тип задачи недоступен');
+  if(project.issue_type_scheme_id&&!await one('SELECT issue_type_id FROM issue_type_scheme_items WHERE scheme_id=? AND issue_type_id=?',[project.issue_type_scheme_id,patch.issue_type_id]))throw new WorkError(422,'Тип задачи не входит в схему проекта');
+}
 export async function assertDependencyCycle(connection,taskId,dependsOn){
   if(Number(taskId)===Number(dependsOn))throw new WorkError(422,'Задача не может блокировать сама себя');
   const [found]=await connection.query(`WITH RECURSIVE parents AS (
@@ -35,11 +43,13 @@ export async function assertTaskGates(user, task, patch, connection=null) {
   const missing=parseJson(gate.required_fields_json,[]).filter(field=>{const value=field.startsWith('custom.')?combined.custom_values[field.slice(7)]:combined[field];return value==null||value===''||(Array.isArray(value)&&!value.length);});
   if(missing.length)throw new WorkError(422,`Заполните обязательные поля: ${missing.join(', ')}`);
 }
+// Изменяет задачу с проверкой версии, прав, этапа и допустимого типа.
 export async function changeTask(user,taskId,patch,connection,{version=null,depth=0}={}){
   patch=taskChangeSchema.parse(patch);
   const [[task]]=await connection.query("SELECT * FROM tasks WHERE id=? FOR UPDATE",[positiveId.parse(taskId)]);
   if(!task)throw new WorkError(404,'Задача не найдена');
   const project=await projectFor(user,task.project_id,'task.edit',true);
+  await validateTaskType(user,project,patch);
   if(version!==null&&Number(version)!==Number(task.version_number))throw new WorkError(409,'Задача изменена другим пользователем',{current_version:task.version_number,task_id:task.id});
   if(Object.hasOwn(patch,'assignee_id')&&Number(patch.assignee_id)!==Number(task.assignee_id)){await projectFor(user,task.project_id,'task.assign',true);await validUsers(user,[patch.assignee_id],task.project_id);}
   if(patch.stage_id&&!await one("SELECT id FROM workflow_stages WHERE id=? AND workflow_id=?",[patch.stage_id,project.workflow_id]))throw new WorkError(422,'Этап относится к другому проекту');
@@ -57,10 +67,12 @@ export async function changeTask(user,taskId,patch,connection,{version=null,dept
   await emitEvent({workspaceId:user.workspace_id,eventType:'task.updated',aggregateType:'task',aggregateId:task.id,payload:{task_id:task.id,project_id:task.project_id,title:next.title,automation_depth:depth,changed_fields:Object.keys(patch)}},connection);
   return {task_id:task.id,version_number:task.version_number+1};
 }
+// Создаёт задачу и событие с проверкой прав, полей и схемы типов проекта.
 export async function createWorkTask(user,projectId,data,connection,{depth=0}={}){
   const project=await projectFor(user,projectId,'task.create',true);
   await connection.query('SELECT id FROM projects WHERE id=? FOR UPDATE',[project.id]);
   const patch=taskChangeSchema.parse(data);
+  await validateTaskType(user,project,patch);
   if(!patch.title)throw new WorkError(422,'Укажите название задачи');
   if(patch.assignee_id){await projectFor(user,project.id,'task.assign',true);await validUsers(user,[patch.assignee_id],project.id);}
   await assertFieldEdits(user,project.id,patch.custom_values,{});
@@ -70,6 +82,7 @@ export async function createWorkTask(user,projectId,data,connection,{depth=0}={}
   if(patch.start_date&&patch.due_date&&patch.start_date>patch.due_date)throw new WorkError(422,'Срок должен быть не раньше начала');
   const [[counter]]=await connection.query('SELECT COALESCE(MAX(task_number),0)+1 AS number,COALESCE(MAX(position),0)+1000 AS position FROM tasks WHERE project_id=?',[project.id]);
   const [created]=await connection.query('INSERT INTO tasks(project_id,stage_id,task_number,title,description,priority,assignee_id,reporter_id,start_date,due_date,estimate_minutes,progress,position,rank_value,custom_values_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',[project.id,stage.id,counter.number,patch.title,patch.description||'',patch.priority||'medium',patch.assignee_id||null,user.id,patch.start_date||null,patch.due_date||null,patch.estimate_minutes??null,patch.progress||0,counter.position,counter.position,JSON.stringify(patch.custom_values||{})]);
+  if(patch.issue_type_id!=null||patch.story_points!=null)await connection.query('UPDATE tasks SET issue_type_id=?,story_points=? WHERE id=?',[patch.issue_type_id||null,patch.story_points??null,created.insertId]);
   await emitEvent({workspaceId:user.workspace_id,eventType:'task.created',aggregateType:'task',aggregateId:created.insertId,payload:{task_id:created.insertId,project_id:project.id,title:patch.title,automation_depth:depth}},connection);
   return {task_id:created.insertId,task_key:`${project.key_code}-${counter.number}`,version_number:1};
 }

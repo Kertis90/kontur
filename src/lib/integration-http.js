@@ -32,8 +32,9 @@ export async function pinnedDestination(url,resolver=lookup){
 // Resolve once, then pin the socket to the checked address. Keep the original host for TLS/SNI.
 // node:https does not follow redirects. Do not log errors from the HTTP library: URLs may contain secrets.
 export async function integrationPost(target,body,headers={}){return integrationRequest(target,{method:'POST',body,headers});}
-export async function integrationRequest(target,{method='GET',body='',headers={},maxResponseBytes=65536}={}){
- if(!['GET','POST','PUT','PATCH','DELETE','OPTIONS','PROPFIND','REPORT'].includes(method)||Buffer.byteLength(body)>3000000||maxResponseBytes>3000000)throw networkError('CONFIG_INVALID');
+// Выполняет запрос к проверенному адресу; двоичные файлы разрешены только при ограниченном GET.
+export async function integrationRequest(target,{method='GET',body='',headers={},maxResponseBytes=65536,binary=false}={}){
+ if(!['GET','POST','PUT','PATCH','DELETE','OPTIONS','PROPFIND','REPORT'].includes(method)||Buffer.byteLength(body)>3000000||!Number.isSafeInteger(maxResponseBytes)||maxResponseBytes<1||maxResponseBytes>(binary?100000000:3000000)||(binary&&method!=='GET'))throw networkError('CONFIG_INVALID');
  const url=integrationUrl(target); let expired=false;
  const deadline=Date.now()+10000;
  let timeout;
@@ -44,7 +45,7 @@ export async function integrationRequest(target,{method='GET',body='',headers={}
   request=https.request(url,{method,agent:false,headers:{'content-type':'application/json','content-length':Buffer.byteLength(body),'user-agent':'Kontur-Integrations/1.0',...headers},lookup:(_host,options,callback)=>options.all?callback(null,[destination]):callback(null,destination.address,destination.family)},response=>{
    let size=0;const chunks=[];
    response.on('data',chunk=>{size+=chunk.length;if(size>maxResponseBytes){finish(networkError('RESPONSE_TOO_LARGE'));request.destroy();}else chunks.push(chunk);});
-   response.on('end',()=>finish(null,{status:response.statusCode,headers:response.headers,text:Buffer.concat(chunks).toString('utf8')}));
+   response.on('end',()=>finish(null,{status:response.statusCode,headers:response.headers,...(binary?{bytes:Buffer.concat(chunks)}:{text:Buffer.concat(chunks).toString('utf8')})}));
    response.on('error',()=>finish(networkError('NETWORK_ERROR')));
   });
   timer=setTimeout(()=>{finish(networkError('TIMEOUT'));request.destroy();},Math.max(1,deadline-Date.now()));

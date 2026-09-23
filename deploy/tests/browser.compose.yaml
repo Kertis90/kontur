@@ -1,0 +1,30 @@
+name: kontur-browser-check
+services:
+  mysql:
+    image: mysql:8.4
+    environment:
+      MYSQL_ROOT_PASSWORD: disposable-browser-root
+      MYSQL_DATABASE: kontur_browser_test
+      MYSQL_USER: kontur_test
+      MYSQL_PASSWORD: disposable-browser-only
+    command: ["--log-bin-trust-function-creators=1"]
+    ports: ["127.0.0.1:13316:3306"]
+    tmpfs: [/var/lib/mysql]
+    healthcheck:
+      test: ["CMD-SHELL", "MYSQL_PWD=$$MYSQL_ROOT_PASSWORD mysqladmin ping -h 127.0.0.1 -u root --silent"]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+  redis:
+    image: redis:7-alpine
+    ports: ["127.0.0.1:13379:6379"]
+    tmpfs: [/data]
+  minio:
+    image: minio/minio:latest
+    profiles: [files]
+    command: server /data
+    environment:
+      MINIO_ROOT_USER: kontur_test
+      MINIO_ROOT_PASSWORD: disposable-browser-storage
+    ports: ["127.0.0.1:13900:9000"]
+    tmpfs: [/data]
