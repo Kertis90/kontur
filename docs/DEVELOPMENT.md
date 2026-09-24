@@ -1,6 +1,6 @@
 # Разработка в VS Code
 
-## Автоматическая проверка поставки 0.19.0
+## Автоматическая проверка поставки 0.21.0
 
 GitHub Actions выполняет серверные тесты, quality, сборку Node.js 22,
 проверки MySQL и браузера. Локальный одноразовый стенд имеет собственное
@@ -10,6 +10,10 @@ GitHub Actions выполняет серверные тесты, quality, сбо
 ```bash
 docker compose -f deploy/tests/browser.compose.yaml --profile files up -d --wait
 npm run test:browser:setup
+npm run test:plans:mysql
+npm run test:workspace:mysql
+npm run test:agent-debug:mysql
+npm run test:plan-ai:mysql
 npm run test:jira:mysql
 npm run test:backup:mysql
 npm run build
@@ -23,6 +27,18 @@ npm run test:browser
 из Git. Проверка Jira подменяет только ответы внешнего сервера; MySQL, S3,
 создание задач, конфликты, аудит и фоновые проходы выполняются реально.
 Проверка копии сверяет строки, контрольные суммы таблиц и определения триггеров.
+
+`test:workspace:mysql` проверяет приоритеты, согласование состава, зависимости,
+доступ к карте и избранному, атомарное сохранение выбранных сроков и защиту повторов.
+`test:agent-debug:mysql` проверяет запуск общей части, входы, токены, шифрование,
+бюджет и повтор без применения действий. Он также создаёт запуск для браузерного
+разбора схемы, поэтому выполняется **до** `test:browser`.
+`test:plan-ai:mysql` проверяет подготовку и выбор предложений, повтор запроса
+и изменение плана во время ответа. В двух ИИ-проверках ответ внешней модели
+заменён контролируемым ответом; остальная логика работает с настоящей MySQL.
+Браузерные проверки входят через настоящую форму один раз для каждой роли
+в процессе тестов и повторно используют сессию в новых контекстах браузера.
+Это сохраняет серверный лимит попыток входа и не подменяет авторизацию.
 
 После завершения удалите только этот одноразовый стенд:
 
@@ -172,21 +188,25 @@ node --experimental-vm-modules --test scripts/agent-graph.test.mjs scripts/plans
 Для проверки интерфейса и планирования на отдельной MySQL:
 
 ```bash
-docker compose -f deploy/tests/browser.compose.yaml up -d --wait
+docker compose -f deploy/tests/browser.compose.yaml --profile files up -d --wait
 npm run test:browser:setup
 npm run test:plans:mysql
+npm run test:workspace:mysql
+npm run test:agent-debug:mysql
+npm run test:plan-ai:mysql
 npm run test:jira:mysql
 npm run test:backup:mysql
 npm run build
 npx playwright install chromium
 npm run test:browser
-docker compose -f deploy/tests/browser.compose.yaml down
+docker compose -f deploy/tests/browser.compose.yaml --profile files down
 ```
 
 Стенд использует только явно заданные тестовые реквизиты и одноразовые данные.
 Подготовка добавляет выключенный профиль ИИ с адресом `.invalid` для проверки
 сохранения схемы: внешняя модель не вызывается. Браузер проверяет компьютер
-и телефон: конструктор, сохранение ветвей, чат, план → доска → рабочий эпик,
+и телефон: перемещение блоков и стороны связей, библиотеку и журнал агента,
+избранное, оценку плана и сохранение сроков на карте, чат, план → доска → рабочий эпик,
 обычные задачи, комнаты и права Jira. MySQL-проверка дополнительно проверяет
 доступ к черновикам, цели, версии, параллельное начало работы, архив и восстановление.
 

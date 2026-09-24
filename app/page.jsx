@@ -1,4 +1,5 @@
 "use client";
+import PersonalFavorites from '../src/components/PersonalFavorites.jsx';
 import {BoardPlans} from '../src/components/PlansView.jsx';
 import WorkspaceCompanion from "../src/components/WorkspaceCompanion.jsx";
 import WorkspaceClock from "../src/components/WorkspaceClock.jsx";
@@ -136,10 +137,12 @@ export default function Home() {
   const [fieldDraft, setFieldDraft] = useState(null);
   const [toast, setToast] = useState(null);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [favoritesOpen,setFavoritesOpen]=useState(false);
   const [loading, setLoading] = useState(true);
   const [installPrompt, setInstallPrompt] = useState(null);
   const [linkedChannel, setLinkedChannel] = useState(null);
 
+  // Загружает доступное пространство и открывает выбранный в личной ссылке проект.
   async function load(silent = false) {
     if (!silent) setLoading(true);
     try {
@@ -149,7 +152,8 @@ export default function Home() {
       const linkedTask = Number(new URLSearchParams(window.location.search).get("task"));
       if (linkedTask && !linkedTaskOpened.current) { linkedTaskOpened.current = true; setTaskDraft(result.tasks.find(task => task.id === linkedTask) || null); }
       setAuthRequired(false);
-      setProjectId((current) => current && result.projects.some((project) => project.id === current) ? current : result.projects[0]?.id || null);
+      const linkedProject=Number(new URLSearchParams(window.location.search).get('project'));
+      setProjectId((current) => current && result.projects.some((project) => project.id === current) ? current : result.projects.find(project=>project.id===linkedProject)?.id || result.projects[0]?.id || null);
     } catch (error) {
       if (error.status === 401) setAuthRequired(true);
       else setToast({ type: "error", text: error.message });
@@ -234,10 +238,7 @@ export default function Home() {
       <div className="sidebar-body">
       <div className="sidebar-section-label">Рабочее пространство</div>
       <nav>{visibleNavigation.map(([key, label, icon]) => <button key={key} className={view === key ? "active" : ""} onClick={() => setView(key)}><Icon name={icon}/><span>{label}</span></button>)}</nav>
-      <details className="sidebar-projects" open>
-        <summary className="sidebar-section-label">Быстрый доступ <span>{Math.min(data.projects.length, 5)}</span></summary>
-        {data.projects.slice(0, 5).map((item) => <button key={item.id} className={project?.id === item.id ? "active" : ""} onClick={() => { setProjectId(item.id); setView("board"); }}><span className="project-glyph" style={{ background: item.color }}>{item.key_code.slice(0, 2)}</span><span>{item.name}</span></button>)}
-      </details>
+      <PersonalFavorites open={favoritesOpen} onOpen={()=>setFavoritesOpen(true)} onClose={()=>setFavoritesOpen(false)} notify={notify}/>
       </div>
       <div className="sidebar-user">{avatar(data.user.display_name, data.user.avatar_color)}<div><strong>{data.user.display_name}</strong><small>{ROLE_LABELS[data.user.global_role]}</small></div><button onClick={logout} title="Выйти"><Icon name="logout" size={17}/></button></div>
     </aside>
@@ -248,6 +249,7 @@ export default function Home() {
         <label className="global-search"><Icon name="search" size={17}/><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Найти задачу…"/></label>
         <CommandPalette data={data} navigation={visibleNavigation} onNavigate={setView} onTask={setTaskDraft} onCreate={project && projectPermissions["task.create"]?()=>openNewTask():null}/>
         <WorkspaceClock/>
+        <button className="icon-button" aria-label="Открыть избранное" title="Избранное" onClick={()=>setFavoritesOpen(true)}>☆</button>
         {installPrompt && <button className="install-button" onClick={async () => { await installPrompt.prompt(); setInstallPrompt(null); }}>Установить</button>}
         <button className={`icon-button notification-button ${data.notifications.some((item) => !item.read_at) ? "has-unread" : ""}`} onClick={() => setNotificationsOpen((value) => !value)} aria-label="Открыть уведомления" title="Уведомления"><Icon name="bell"/></button>
         {!['admin', 'knowledge', 'chat', 'dashboards', 'api', 'integrations', 'quality', 'objectives', 'agents'].includes(view) && projectPermissions["task.create"] && project && <button className="primary" onClick={() => openNewTask()}><Icon name="plus" size={17}/>Создать задачу</button>}

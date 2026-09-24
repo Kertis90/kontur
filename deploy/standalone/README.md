@@ -34,7 +34,7 @@ curl -fsS http://localhost:3000/api/health
 Укажите в `.env`:
 
 ```dotenv
-KONTUR_IMAGE=registry.company.ru/platform/kontur-work:0.19.0
+KONTUR_IMAGE=registry.company.ru/platform/kontur-work:0.21.0
 ```
 
 После этого:

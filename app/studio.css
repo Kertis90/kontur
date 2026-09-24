@@ -19,6 +19,47 @@
  .sidebar-body nav button { width:76px; min-width:76px; flex:0 0 76px; }
 }
 
+/* Личные ссылки используют общий скролл меню; полный список доступен в одном окне на всех экранах. */
+.personal-favorites .favorite-link { display:flex; gap:10px; align-items:center; padding:9px 11px; border-radius:9px; color:#405069; text-decoration:none; }
+.personal-favorites .favorite-link:hover { background:#fff0f4; color:#c5153b; }
+.favorite-link > span:last-child { min-width:0; }
+.favorite-link strong,.favorite-link small { display:block; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.favorite-link strong { font-size:13px; font-weight:600; }
+.favorite-link small,.favorite-row small { font-size:12px; color:#8a93a3; }
+.favorite-list { display:grid; gap:6px; }
+.favorite-row { display:flex; align-items:center; gap:6px; padding:9px; background:#f6f8fb; border-radius:10px; }
+.favorite-row a { flex:1; min-width:0; text-decoration:none; color:#344257; }
+.favorite-row strong,.favorite-row small { display:block; overflow-wrap:anywhere; }
+.favorite-row button { min-width:32px; padding:6px; }
+.favorite-grip { color:#9aa3b2; cursor:grab; }
+.favorite-search { display:flex; flex-wrap:wrap; align-items:end; gap:10px; margin:20px 0 12px; }
+.favorite-search .work-field { margin:0; flex:1; min-width:120px; }
+.favorite-choices { display:grid; gap:4px; max-height:270px; overflow:auto; }
+.favorite-choices button { display:flex; justify-content:space-between; gap:10px; text-align:left; padding:12px; border:1px solid #e9edf3; border-radius:8px; background:#fff; color:#405069; }
+.favorite-choices button span:first-child { overflow-wrap:anywhere; min-width:0; }
+.favorite-choices button span:last-child { flex-shrink:0; color:#c5153b; }
+
+/* Планирование: спокойная шкала сроков и отдельные проверяемые решения. */
+.plan-strategy { margin:18px 0; padding:18px; border:1px solid #e5eaf1; border-radius:14px; background:#fafbfd; }
+.plan-strategy-heading,.plan-review header { display:flex; justify-content:space-between; align-items:start; gap:12px; }
+.plan-strategy-heading h4 { margin:0 0 8px; }.plan-strategy-heading p { margin:0; white-space:pre-wrap; }
+.plan-score { display:flex; gap:12px; flex-wrap:wrap; margin:16px 0; }.plan-score > span { padding:8px 12px; border:1px solid #e5eaf1; border-radius:9px; background:#fff; font-size:12px; }.plan-score b { margin-left:5px; color:#344257; }
+.plan-decision-panel summary,.roadmap-capacity summary { cursor:pointer; padding:10px 0; font-weight:600; }.plan-decision-panel summary span { display:block; font-size:12px; color:#7e899c; font-weight:400; margin:5px 0; }
+.plan-dependency { display:flex; justify-content:space-between; gap:12px; margin:10px 0; font-size:13px; }
+.plan-review { border:1px solid #e2e6ef; border-radius:10px; background:white; padding:14px; margin:12px 0; font-size:13px; }.plan-review.approved { border-left:3px solid #389f71; }.plan-review.outdated { border-left:3px solid #c5a763; }.plan-review.rejected { border-left:3px solid #d74765; }.plan-review p { margin:8px 0; }.plan-review small { color:#8b94a3; }
+.plan-reviewer-choices { display:grid; gap:10px; margin:14px 0; }.plan-reviewer-choices label { display:flex; gap:10px; }
+.plan-ai-assumptions { padding:16px; background:#fff8e9; border:1px solid #f0e4c5; border-radius:10px; margin:16px 0; }.plan-ai-proposals { display:grid; gap:12px; margin:16px 0; }.plan-ai-proposals article { padding:18px; border:1px solid #dfe5ef; border-radius:12px; }.plan-ai-proposals label { display:flex; gap:10px; }.plan-ai-proposals strong,.plan-ai-proposals small { display:block; }.plan-ai-proposals small { color:#7c899c; font-size:12px; }.plan-ai-proposals li { margin:6px 0; }
+.roadmap-view { min-width:0; }.roadmap-controls { display:flex; gap:16px; flex-wrap:wrap; }.roadmap-controls .work-field { min-width:170px; }.roadmap-scroll { overflow:auto; border:1px solid #e2e7ef; border-radius:12px; }.roadmap-scale,.roadmap-row { display:grid; grid-template-columns:250px minmax(400px,1fr); min-width:680px; }.roadmap-scale { background:#f3f5f9; padding:12px; font-size:12px; color:#7c899b; }.roadmap-scale > div { display:flex; justify-content:space-between; }.roadmap-group h3 { margin:0; padding:12px; font-size:13px; border-top:1px solid #e5eaf2; background:#fafbfd; }.roadmap-row { min-height:66px; padding:8px 12px; border-top:1px solid #edf0f5; align-items:center; }.roadmap-row a { display:block; font-size:13px; color:#344257; text-decoration:none; }.roadmap-row small { display:block; font-size:12px; color:#8b95a5; margin-top:4px; }.roadmap-track { height:40px; position:relative; background:repeating-linear-gradient(90deg,transparent,transparent calc(10% - 1px),#f0f2f6 calc(10% - 1px),#f0f2f6 10%); }.roadmap-bar { position:absolute; top:10px; height:22px; min-width:5px; border-radius:6px; background:#dce5f6; border:1px solid #bacce7; }.roadmap-bar.planned,.roadmap-bar.initiative { background:#f8f4ff; border:1px dashed #ae99d0; }.roadmap-bar.critical { background:#ffe7ed; border-color:#db9bad; }.roadmap-bar span { display:block; white-space:nowrap; font-size:12px; padding:2px 6px; overflow:hidden; color:#6f5665; }.roadmap-capacity { padding:16px 0; }
+@media(max-width:760px) { .plan-strategy-heading { flex-direction:column; }.plan-dependency { flex-wrap:wrap; }.plan-strategy { padding:12px; } }
+
+/* Разбор шагов остаётся рядом с картой, а длинные входы прокручиваются внутри карточки. */
+.agent-debug-editor { margin:16px 0; padding:14px; border:1px solid #e2e7f0; border-radius:12px; background:#f8fafc; }.agent-debug-editor summary { cursor:pointer; font-weight:600; margin-bottom:10px; }
+.agent-step-details { padding:16px; margin:14px 0; border:1px solid #dfe6f1; border-radius:12px; background:white; }.agent-step-details h4 { margin:0 0 8px; }.agent-step-details > p { font-size:12px; color:#748299; }
+.agent-debug-columns { display:grid; grid-template-columns:1fr 1fr; gap:14px; }.agent-debug-columns > div { min-width:0; }.agent-debug-columns pre { max-height:320px; overflow:auto; }.agent-debug-columns h5 { margin:10px 0; font-size:13px; }.agent-branch-reason { padding:10px; background:#edf7f1; border-radius:7px; color:#247550!important; }
+.agent-parts-list { display:grid; grid-template-columns:repeat(auto-fit,minmax(190px,1fr)); gap:10px; }.agent-parts-list .work-card { margin:0; }
+.roadmap-date-changes { display:grid; gap:8px; }.roadmap-date-changes label { display:flex; align-items:start; gap:12px; padding:12px; background:#f7f9fc; border-radius:9px; }.roadmap-date-changes strong,.roadmap-date-changes small { display:block; margin:3px 0; }.roadmap-date-changes small { font-size:12px; color:#7e8b9f; }
+@media(max-width:760px) { .agent-debug-columns { grid-template-columns:1fr; } }
+
 /* Переписка занимает оставшуюся высоту окна, поле ввода всегда доступно. */
 .communications-page { max-width:none; padding:20px 24px 24px; }
 .communications-page > .page-head { margin:0 0 18px; align-items:center; gap:16px; }
@@ -86,8 +127,15 @@
 .canvas-toolbar > div { flex-wrap:wrap; gap:4px; }
 .canvas-toolbar button { font-size:12px; }
 .visual-builder .agent-canvas { height:560px; background-color:#f8fafc; }
-.canvas-node { border-radius:14px; box-shadow:0 4px 14px #2035550a; }
-.canvas-node .canvas-node-handle { height:94px; padding:10px 16px; gap:5px; }
+.canvas-node { border-radius:14px; box-shadow:0 4px 14px #2035550a; overflow:visible; user-select:none; }
+.canvas-node .canvas-node-handle { height:100%; padding:14px 20px; gap:5px; border-radius:inherit; }
+/* Выходы следуют за стрелками по четырём сторонам, сохраняя площадь для захвата мышью. */
+.canvas-node .canvas-port { position:absolute; transform:translate(-50%,-50%); min-width:28px; height:26px; padding:0 5px; border:1px solid #c4ccd9; border-radius:8px; background:#fff; color:#69778e; font-size:12px; cursor:crosshair; touch-action:none; }
+.canvas-node .canvas-port:hover,.canvas-node .canvas-port.active { color:#c30d34; border-color:#d91846; background:#fff1f5; box-shadow:0 0 0 4px #d9184618; }
+.canvas-edge-editor label { display:grid; gap:4px; }
+.canvas-edge-editor select { max-width:150px; padding:5px; }
+.canvas-hint { display:flex; gap:12px; align-items:center; justify-content:space-between; }
+.canvas-hint button { flex-shrink:0; border:1px solid #efccd5; background:#fff4f6; color:#b41437; border-radius:6px; padding:6px 9px; }
 .canvas-node .canvas-node-handle > span { display:flex; gap:8px; align-items:center; font-size:12px; }
 .canvas-node .canvas-node-handle small { font-size:12px; }
 .node-icon { color:#8061c0; font-size:15px; background:#f3effc; border-radius:6px; width:23px; height:22px; display:grid; place-items:center; }

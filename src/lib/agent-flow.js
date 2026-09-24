@@ -9,7 +9,11 @@ export const conditionSchema=z.object({mode:z.enum(['all','any']).default('all')
 const target=z.union([key,z.literal(''),z.literal('$end')]).default('');
 const base={id:key,name:z.string().trim().min(1).max(100),next:target};
 const point=z.object({x:z.number().min(0).max(6000),y:z.number().min(0).max(6000)}).strict();
-export const flowSchema=z.object({entry:target,positions:z.record(z.union([key,z.enum(['$trigger','$sources','$end'])]),point).refine(v=>Object.keys(v).length<=35).default({}),max_calls:z.number().int().min(1).max(12).default(8),nodes:z.array(z.discriminatedUnion('type',[
+const side=z.enum(['auto','top','right','bottom','left']).default('auto');
+// Сохраняет стороны стрелок отдельно от переходов, не меняя порядок исполнения.
+const edgeSidesSchema=z.record(z.string().regex(/^(\$trigger|\$sources|[a-z][a-z0-9_]{0,31})\.(fixed|entry|next|on_true|on_false)$/),z.object({from:side,to:side}).strict()).refine(v=>Object.keys(v).length<=66).default({});
+export const flowSchema=z.object({entry:target,edge_sides:edgeSidesSchema,positions:z.record(z.union([key,z.enum(['$trigger','$sources','$end'])]),point).refine(v=>Object.keys(v).length<=35).default({}),max_calls:z.number().int().min(1).max(12).default(8),nodes:z.array(z.discriminatedUnion('type',[
+ z.object({...base,type:z.literal('part'),part_id:z.number().int().positive(),version:z.number().int().positive()}).strict(),
  z.object({...base,type:z.literal('action'),action:z.enum(AGENT_ACTION_CATALOG.map(a=>a.key)),prompt:z.string().trim().min(10).max(6000)}).strict(),
  z.object({...base,type:z.literal('analyze'),profile_id:z.string().uuid().nullable().default(null),prompt:z.string().trim().min(10).max(6000),fields:z.array(z.object({key,type:z.enum(['string','number','boolean'])}).strict()).max(10).default([])}).strict(),
  z.object({...base,type:z.literal('condition'),condition:conditionSchema,on_true:target,on_false:target}).strict(),
@@ -67,7 +71,9 @@ export async function executeAgentFlow(config,context,{analyze,action,onStep=asy
  const visited=new Set();
  while(index>=0&&index<nodes.length){
   if(visited.has(index))throw new WorkError(422,'Обнаружен цикл сценария');visited.add(index);
-  const node=nodes[index],started=Date.now();await guard();await onStep({node,index,status:'running',input_count:sources.length});
+  const node=nodes[index],started=Date.now();
+  const input={inputs:state.inputs,metrics:{...state.metrics},previous:{...state.steps},source_ids:sources.map(s=>({kind:s.kind,id:s.id})),instructions:renderAgentTemplate(node.prompt||node.text||node.message||'',state),...(node.type==='condition'?{condition:{mode:node.condition.mode,rules:node.condition.rules.map(r=>({...r,actual:readVariable(state,r.path)??null}))}}:{})};
+  await guard();await onStep({node,index,status:'running',input_count:sources.length,input});
   try{
    let output,next=node.next;
    if(node.type==='analyze')output=await analyze(node,renderAgentTemplate(node.prompt,state),sources,state);
@@ -76,9 +82,9 @@ export async function executeAgentFlow(config,context,{analyze,action,onStep=asy
    if(node.type==='condition'){const matched=matchesCondition(node.condition,state);output={matched};next=matched?node.on_true:node.on_false;}
    if(node.type==='filter'){sources=sources.filter(s=>node.kinds.includes(s.kind)).slice(0,node.limit);state.metrics=sourceMetrics(sources);output={count:sources.length};}
    if(['template','stop'].includes(node.type)){output={summary:renderAgentTemplate(node.text,state)};if(node.type==='stop'){stopped=true;summary=output.summary;}}
-   state.steps[node.id]=output;const step={node,index,status:'completed',output,duration_ms:Date.now()-started,input_count:sources.length};trace.push(step);await guard();await onStep(step);
+   state.steps[node.id]=output;const step={node,index,status:'completed',output,duration_ms:Date.now()-started,input_count:input.source_ids.length,input};trace.push(step);await guard();await onStep(step);
    if(stopped||next==='$end')break;index=next?nodes.findIndex(n=>n.id===next):index+1;
-  }catch(e){await onStep({node,index,status:'failed',duration_ms:Date.now()-started,error:e.status?e.message:'Ошибка шага'});throw e;}
+  }catch(e){await onStep({node,index,status:'failed',input,input_count:input.source_ids.length,duration_ms:Date.now()-started,error:e.status?e.message:'Ошибка шага'});throw e;}
  }
  return {sources,state,trace,stopped,summary};
 }

@@ -33,6 +33,9 @@ jobs:
         run: docker compose -f deploy/tests/browser.compose.yaml --profile files up -d --wait
       - run: npm run test:browser:setup
       - run: npm run test:plans:mysql
+      - run: npm run test:workspace:mysql
+      - run: npm run test:agent-debug:mysql
+      - run: npm run test:plan-ai:mysql
       - run: npm run test:jira:mysql
       - run: npm run test:backup:mysql
       - run: npm run test:browser

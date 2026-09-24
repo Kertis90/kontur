@@ -1,4 +1,6 @@
 import {designAgent,previewAgentActions} from './agent-workbench.js';
+import {agentPartsApi,resolveFlowParts} from './agent-parts.js';
+import {agentDebugRun,loadDebugContext,checkReplaySources} from './agent-debug.js';
 import {agentEvaluationsApi} from './agent-evaluations.js';
 import {decideAgentGate} from './agent-checkpoints.js';
 import {agentLifecycleApi,readAgentDraft} from './agent-lifecycle.js';
@@ -44,8 +46,10 @@ export async function saveAgent(user,input,id=null,{connection=null,executor=use
  };return connection?persist(connection):transaction(persist);
 }
 async function runFor(user,id){const run=await one('SELECT * FROM ai_agent_runs WHERE id=? AND workspace_id=?',[positiveId.parse(id),user.workspace_id]);if(!run)throw new WorkError(404,'Запуск не найден');await agentAccess(user,run.project_id);return run;}
+// Обрабатывает настройки и историю агентов, включая разбор входов и безопасный повтор запуска.
 export async function agentsApi(request,path,user){
  const method=request.method,params=new URL(request.url).searchParams;
+ if(path[1]==='parts')return agentPartsApi(request,path,user);
  if(path[1]==='design'&&method==='POST')return designAgent(request,user);
  if(path[2]==='evaluations')return agentEvaluationsApi(request,path,user,{getAgent});
  if(path[1]==='identities')return agentIdentityApi(request,path,user);
@@ -99,13 +103,22 @@ export async function agentsApi(request,path,user){
  }
  if(path[1]==='runs'&&path[2]){
   const run=await runFor(user,path[2]);
+  if(method==='GET'&&path[3]==='debug')return reply(await agentDebugRun(user,run));
+  if(method==='POST'&&path[3]==='replay'){
+   await agentAccess(user,run.project_id,'agent.manage');await agentScope(user,'agents:run');const data=z.object({request_id:z.string().uuid(),draft_revision:positiveId.optional()}).strict().parse(await body(request)),agent=await getAgent(user,run.agent_id,'agent.run');
+   let selected=agent,identityId=agent.identity_id;if(data.draft_revision){const draft=await readAgentDraft(agent);if(draft.draft_revision!==data.draft_revision)throw new WorkError(409,'Черновик изменился');selected={...agent,config:draft.config};identityId=draft.identity_id;}
+   checkReplaySources(agentConfigSchema.parse(parseJson(run.config_json)),selected.config);await loadDebugContext(user,run,{versions:true});await validateAgentConfigAccess(user,run.project_id,selected.config,{execute:true});const actor=identityId?await identityActor(user,identityId,run.project_id):user;await loadDebugContext(actor,run,{versions:true});
+   const old=parseJson(run.trigger_context_json,{}),context={inputs:old.inputs||{},task_id:old.task_id||null,event_type:old.event_type||null,run_id:old.run_id||null,replay_run_id:run.id,requested_by:user.id,requester_api_token_id:user.api_token_id||null,...(data.draft_revision?{draft_revision:data.draft_revision}:{})};
+   const queued=await enqueueAgentRun(actor,selected,{key:`replay:${user.id}:${data.request_id}`,context,dryRun:true});await audit(user,'agent.replayed','ai_agent_run',queued.id,{from:run.id});return reply(queued,202);
+  }
   if(method==='GET'&&path[3]==='preview')return reply(await previewAgentActions(user,run));
   if(method==='GET'){
    await checkAgentRefs(user,run.project_id,parseJson(run.source_refs_json,[]));
    const {api_token_id,config_json,trigger_key,trigger_context_json,source_refs_json,source_meta_json,result_json,applied_json,...publicRun}=run;
-   const steps=await rows('SELECT node_id,name,node_type,status,input_count,output_json,duration_ms,error_text FROM ai_agent_run_steps WHERE run_id=? ORDER BY position',[run.id]);
+   const steps=await rows('SELECT node_id,name,node_type,status,input_count,output_json,duration_ms,error_text,input_tokens,output_tokens FROM ai_agent_run_steps WHERE run_id=? ORDER BY position',[run.id]);
    const checkpoint=await one("SELECT node_id,revision,status,reviewers_json,expires_at,decided_by,decision_note FROM ai_agent_checkpoints WHERE run_id=?",[run.id]);
    const output={...publicRun,flow:parseJson(config_json,{}).flow||{nodes:[]},checkpoint:checkpoint?{...checkpoint,reviewer_ids:parseJson(checkpoint.reviewers_json,[]),reviewers_json:undefined}:null,refs:parseJson(source_refs_json,[]),meta:parseJson(source_meta_json,{}),result:parseJson(result_json,null),applied:parseJson(applied_json,[]),steps:steps.map(({output_json,...s})=>({...s,output:parseJson(output_json,null)})),feedback:await one('SELECT rating,note FROM ai_agent_run_feedback WHERE run_id=? AND user_id=?',[run.id,user.id])};
+   if(output.flow.nodes.some(n=>n.type==='part'))output.flow=await resolveFlowParts(user,run.project_id,output.flow);
    if(path[3]==='export')return new Response(JSON.stringify(output,null,2),{headers:{'Content-Type':'application/json; charset=utf-8','Content-Disposition':`attachment; filename="agent-run-${run.id}.json"`,'Cache-Control':'no-store'}});
    if(path.length===3)return reply(output);
   }

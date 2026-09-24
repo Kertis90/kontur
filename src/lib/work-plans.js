@@ -18,7 +18,7 @@ export async function planAccess(user,plan,write=false){
  if(write&&plan.archived)throw new WorkError(409,'План в архиве');return plan;
 }
 // Проверяет цель и её текущую доступность без раскрытия данных чужого проекта.
-async function goalFor(user,id){
+export async function goalFor(user,id){
  if(!id)return null;
  if(!await apiBackgroundAllowed(user,user.api_token_id,'objectives:read'))throw new WorkError(403,'Для целей требуется разрешение API на чтение целей');
  const goal=await one('SELECT o.*,p.workspace_id FROM work_objectives o JOIN projects p ON p.id=o.project_id WHERE o.id=? AND p.deleted_at IS NULL',[id]);
@@ -107,6 +107,8 @@ export async function plansApi(request,path,user){
    const values=[data.kind,data.parent_id,data.title,data.description,data.priority,data.assignee_id,data.start_date,data.due_date,data.estimate_minutes,data.story_points,data.objective_id,data.state];
    if(creating){const [[count]]=await connection.query('SELECT COUNT(*) AS total FROM work_plan_items WHERE plan_id=?',[plan.id]);if(count.total>=2000)throw new WorkError(409,'В плане уже 2000 элементов; создайте отдельную инициативу');const [created]=await connection.query('INSERT INTO work_plan_items(kind,parent_id,title,description,priority,assignee_id,start_date,due_date,estimate_minutes,story_points,objective_id,state,plan_id,created_by,request_id,creation_hash) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',[...values,plan.id,user.id,data.request_id,fingerprint(data)]);item={id:created.insertId};}
    else await connection.query('UPDATE work_plan_items SET kind=?,parent_id=?,title=?,description=?,priority=?,assignee_id=?,start_date=?,due_date=?,estimate_minutes=?,story_points=?,objective_id=?,state=?,revision=revision+1 WHERE id=?',[...values,item.id]);
+   // Отмена элемента убирает его связи, чтобы они не блокировали дальнейшее планирование.
+   if(!creating&&data.state==='cancelled'){await connection.query('DELETE FROM work_plan_dependencies WHERE plan_id=? AND (item_id=? OR depends_on_item_id=?)',[plan.id,item.id,item.id]);await connection.query('UPDATE work_plan_strategy SET revision=revision+1 WHERE plan_id=?',[plan.id]);}
    await planAudit(connection,user,creating?'plan.item.created':'plan.item.updated',plan.id,{item_id:item.id});return {id:item.id};
   });return reply(result,creating?201:200);
  }
@@ -125,7 +127,11 @@ export async function plansApi(request,path,user){
    let parent=null;if(item.parent_id){[[parent]]=await connection.query('SELECT * FROM work_plan_items WHERE id=? AND plan_id=?',[item.parent_id,plan.id]);if(parent?.state!=='active'||!parent.task_id)throw new WorkError(409,'Сначала начните работу над родительским эпиком');}
    const type=await one('SELECT id FROM issue_types WHERE workspace_id=? AND code=? AND active=TRUE',[user.workspace_id,item.kind]);
    if(!type)throw new WorkError(422,'Добавьте нужный тип задачи в настройки проекта');
+   // Переносит связи только после появления рабочих карточек предшественников.
+   const [plannedLinks]=await connection.query('SELECT d.*,p.task_id AS linked_task_id,p.state AS linked_state FROM work_plan_dependencies d LEFT JOIN work_plan_items p ON p.id=d.depends_on_item_id WHERE d.item_id=?',[item.id]),dependencies=[];
+   for(const link of plannedLinks){if(link.depends_on_item_id&&(link.linked_state!=='active'||!link.linked_task_id))throw new WorkError(409,'Сначала начните работу над блокирующими элементами плана');const target=link.depends_on_task_id||link.linked_task_id;if(!await apiBackgroundAllowed(user,user.api_token_id,'tasks:read'))throw new WorkError(403,'Перенос связей требует разрешения API на чтение задач');const task=await one('SELECT project_id FROM tasks WHERE id=?',[target]);if(!task)throw new WorkError(409,'Блокирующая задача удалена');await projectFor(user,task.project_id);dependencies.push(target);}
    const created=await createWorkTask(user,plan.project_id,{title:item.title,description:item.description,priority:item.priority,assignee_id:item.assignee_id,start_date:item.start_date,due_date:item.due_date,estimate_minutes:item.estimate_minutes,story_points:item.story_points==null?null:Number(item.story_points),issue_type_id:type.id},connection);
+   for(const target of new Set(dependencies))await connection.query("INSERT INTO task_dependencies(task_id,depends_on_task_id,dependency_type) VALUES(?,?,'blocks')",[created.task_id,target]);
    if(parent)await connection.query('UPDATE tasks SET epic_task_id=? WHERE id=?',[parent.task_id,created.task_id]);
    await connection.query("UPDATE work_plan_items SET state='active',task_id=?,revision=revision+1 WHERE id=?",[created.task_id,item.id]);await planAudit(connection,user,'plan.item.started',plan.id,{item_id:item.id,task_id:created.task_id});return created;
   });return reply(result);

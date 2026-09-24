@@ -24,5 +24,6 @@ export function graphError(flow) {
 // Удаляет блок, перенаправляя входящие связи на завершение и сохраняя остальные позиции.
 export function removeGraphNode(flow,id) {
  const positions={...flow.positions};delete positions[id];
- return {...flow,entry:flow.entry===id?'$end':flow.entry,positions,nodes:flow.nodes.filter(n=>n.id!==id).map(n=>({...n,...(n.next===id?{next:'$end'}:{}),...(n.type==='condition'?{on_true:n.on_true===id?'$end':n.on_true,on_false:n.on_false===id?'$end':n.on_false}:{})}))};
+ const edge_sides=Object.fromEntries(Object.entries(flow.edge_sides||{}).filter(([key])=>!key.startsWith(`${id}.`)));
+ return {...flow,entry:flow.entry===id?'$end':flow.entry,positions,edge_sides,nodes:flow.nodes.filter(n=>n.id!==id).map(n=>({...n,...(n.next===id?{next:'$end'}:{}),...(n.type==='condition'?{on_true:n.on_true===id?'$end':n.on_true,on_false:n.on_false===id?'$end':n.on_false}:{})}))};
 }

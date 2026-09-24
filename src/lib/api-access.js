@@ -66,12 +66,13 @@ function routeScope(request) {
     const module = parts[1];
     if (module === "push") return null;
     if (module === "plans") return read ? "planning:read" : "planning:write";
+    if (module === "roadmap") return parts[2]==='apply'?'planning:write':"planning:read";
     if (module === "operations") return read ? "operations:read" : null;
     if (module === "jira-imports") return parts[2] === "task" ? "tasks:read" : read ? "imports:read" : "imports:write";
     if (module === "semantic") return parts[2] === "settings" ? null : parts[2] === "search" || read ? "semantic:read" : "semantic:write";
     if (module === "agents" && parts[2] === "identities") return "agents:identities";
     if (module === "agents" && parts[3] === "evaluations") return read ? "agents:read" : parts[4] === "suites" ? "agents:write" : "agents:run";
-    if (module === "agents") return read ? "agents:read" : ["preview","run","test","cancel","feedback"].includes(parts.at(-1)) ? "agents:run" : ["review","gate"].includes(parts.at(-1)) ? "agents:approve" : "agents:write";
+    if (module === "agents") return read ? "agents:read" : ["preview","run","test","replay","cancel","feedback"].includes(parts.at(-1)) ? "agents:run" : ["review","gate"].includes(parts.at(-1)) ? "agents:approve" : "agents:write";
     if (module === "allure") return read ? "quality:read" : "quality:write";
     if (module === "quality") return read ? "quality:read" : "quality:write";
     if (module === "objectives") return read ? "objectives:read" : "objectives:write";
@@ -82,7 +83,7 @@ function routeScope(request) {
     if (module === "ai-usage") return "ai:read";
     if (module === "leveling") return "reports:read";
     if (module === "analytics") return parts[2] === "subscriptions" ? (read ? "profile:read" : "profile:write") : parts[2] === "groups" ? "profile:read" : "reports:read";
-    if (module === "views") return read ? "profile:read" : "profile:write";
+    if (["views","favorites"].includes(module)) return read ? "profile:read" : "profile:write";
     if (["task-changes","undo"].includes(module)) return "tasks:write";
     if (module === "sla") return ["calendars","notifications"].includes(parts[2]) ? null : "tasks:read";
     if (["security","directory"].includes(module)) return null;

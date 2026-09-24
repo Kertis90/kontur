@@ -1,13 +1,5 @@
 import {test, expect} from '@playwright/test';
-
-// Выполняет реальный вход на одноразовом стенде через пользовательскую форму.
-async function login(page, email = 'browser-owner@example.invalid', password = 'disposable-browser-owner-123') {
-  await page.goto('/');
-  await page.getByLabel('Электронная почта или логин', {exact: true}).fill(email);
-  await page.getByLabel('Пароль', {exact: true}).fill(password);
-  await page.getByRole('button', {name: 'Войти', exact: true}).click();
-  await expect(page.getByPlaceholder('Найти задачу…')).toBeVisible({timeout: 60000});
-}
+import {login} from './session.mjs';
 
 test('ИИ-агенты открываются с действующими правами и показывают визуальный конструктор', async ({page}, testInfo) => {
   const errors = [];
@@ -67,6 +59,46 @@ test('конструктор добавляет ветви и действия, 
  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
  await page.evaluate(()=>scrollTo(0,0));
  await page.screenshot({path:testInfo.outputPath('agent-branches.png'),fullPage:true});
+});
+
+// Проверяет перемещение нового блока мышью даже при незавершённом выборе связи.
+test('новый блок перемещается после выбора связи',async({page})=>{
+ await login(page);await page.getByRole('button',{name:'ИИ-агенты',exact:true}).click();await page.getByRole('button',{name:'+ Создать агента',exact:true}).click();
+ await page.getByRole('complementary',{name:'Библиотека блоков'}).getByRole('button',{name:'Условие',exact:false}).click();
+ await page.getByRole('button',{name:'Вписать',exact:true}).click();
+ const node=page.locator('[data-node-id="step_1"]'),before=await node.getAttribute('style');
+ await page.getByRole('button',{name:'Источники и параметры: Далее',exact:true}).click();
+ await node.locator('.canvas-node-handle').scrollIntoViewIfNeeded();
+ const box=await node.locator('.canvas-node-handle').boundingBox();
+ await page.mouse.move(box.x+50,box.y+30);await page.mouse.down();await page.mouse.move(box.x+100,box.y+65,{steps:8});await page.mouse.up();
+ await expect(node).not.toHaveAttribute('style',before);
+ await expect(page.getByRole('button',{name:'Отменить связь',exact:true})).toHaveCount(0);
+ const edge=page.locator('[data-edge="$sources.entry"]');await edge.locator('path').focus();await page.keyboard.press('Enter');
+ await page.getByLabel('Сторона выхода',{exact:true}).selectOption('top');await page.getByLabel('Сторона входа',{exact:true}).selectOption('right');
+ await expect(edge).toHaveAttribute('data-from-side','top');await expect(edge).toHaveAttribute('data-to-side','right');
+ await page.getByRole('button',{name:'Закрыть настройки связи',exact:true}).click();
+ await page.getByRole('button',{name:'↶ Отменить',exact:true}).click();await expect(edge).not.toHaveAttribute('data-to-side','right');
+});
+
+// Проверяет личные ссылки на обоих экранах и сохранение серверного порядка после перезагрузки.
+test('избранное хранит выбранные ссылки и их порядок',async({page})=>{
+ await login(page);await page.getByRole('button',{name:'Открыть избранное',exact:true}).click();const dialog=page.getByRole('dialog',{name:'Личное избранное'});
+ const old=await page.request.get('/api/work/favorites'),value=await old.json();await page.request.put('/api/work/favorites',{data:{revision:value.revision,items:[]}});await page.reload();await page.getByRole('button',{name:'Открыть избранное',exact:true}).click();
+ await dialog.locator('.favorite-choices button').first().click();await expect(dialog.locator('.favorite-row')).toHaveCount(1);
+ await dialog.getByRole('combobox',{name:'Тип ссылки',exact:true}).selectOption('board');await dialog.locator('.favorite-choices button').first().click();await expect(dialog.locator('.favorite-row')).toHaveCount(2);
+ await dialog.locator('.favorite-row').nth(1).getByRole('button',{name:/Выше:/}).click();await expect(dialog.locator('.favorite-row small').first()).toHaveText('Доска');
+ await page.reload();await page.getByRole('button',{name:'Открыть избранное',exact:true}).click();await expect(dialog.locator('.favorite-row small').first()).toHaveText('Доска');
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);
+});
+
+// Проверяет сохранение оценки и просмотр общего сценария через пользовательские формы.
+test('приоритет плана виден в общей карте',async({page},testInfo)=>{
+ await login(page);const title=`Карта ${testInfo.project.name} ${Date.now()}`;const created=await page.request.post('/api/work/plans',{data:{title,request_id:crypto.randomUUID(),start_date:'2026-10-01',due_date:'2026-10-10'}});expect(created.ok()).toBe(true);const plan=await created.json();
+ await page.goto(`/?view=work&tab=plans&plan=${plan.id}`);await page.getByRole('button',{name:'Оценить приоритет',exact:true}).click();
+ const dialog=page.getByRole('dialog',{name:'Приоритет плана'});await dialog.getByLabel('Ожидаемый результат',{exact:true}).fill('Сократить время подготовки отчёта');await dialog.getByLabel('Эффект, от 0 до 10',{exact:true}).fill('8');await dialog.getByLabel('Усилия, человеко-дней',{exact:true}).fill('4');await dialog.getByRole('button',{name:'Сохранить оценку',exact:true}).click();await expect(page.locator('.plan-score')).toContainText('2.00');
+ await page.getByRole('tab',{name:'Общая карта',exact:true}).click();await expect(page.getByRole('heading',{name:'Общая карта работы',exact:true})).toBeVisible();await page.getByRole('combobox',{name:'Проект или план',exact:true}).selectOption(`plan:${plan.id}`);await page.getByLabel('Сдвиг начала, дней',{exact:true}).fill('7');await page.getByRole('button',{name:'Посмотреть сценарий',exact:true}).click();await expect(page.locator('.roadmap-row')).toHaveCount(1);await expect(page.locator('.roadmap-bar')).toHaveAttribute('title',new RegExp('8 окт'));
+ expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth+1)).toBe(true);await page.screenshot({path:testInfo.outputPath('shared-roadmap.png'),fullPage:true});
+ await page.getByRole('button',{name:'Проверить и сохранить сроки',exact:true}).click();const confirm=page.getByRole('dialog',{name:'Подтвердить новые сроки'});await expect(confirm).toContainText(title);await confirm.getByRole('button',{name:/Сохранить выбранные сроки/}).click();await expect(confirm).toHaveCount(0);const updated=await (await page.request.get(`/api/work/plans/${plan.id}`)).json();expect(updated.start_date).toBe('2026-10-08');
 });
 
 test('чат компактен, поле ввода в окне, быстрый доступ без отдельной прокрутки',async({page},testInfo)=>{

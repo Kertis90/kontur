@@ -1,4 +1,5 @@
 import {searchSemantic} from './work-semantic.js';
+import {resolveFlowParts,checkExpandedFlow} from './agent-parts.js';
 import {semanticHash} from './semantic-vectors.js';
 import {renderAgentTemplate} from './agent-flow.js';
 import {assertIdentityConfiguration,assertIdentityRefs} from './agent-identity-policy.js';
@@ -24,7 +25,9 @@ async function articleAccess(user,id){
  const access=await knowledgeSpaceAccess(user,article.space_id);
  if(!knowledgeAccessAtLeast(access.level,article.status==='published'?'view':'edit'))throw new WorkError(403,'Нет доступа к пространству базы знаний');return article;
 }
+// Проверяет права и лимиты всего сценария, включая закреплённые общие части.
 export async function validateAgentConfigAccess(user,projectId,config,{execute=false}={}){
+ if(config.flow.nodes.some(n=>n.type==='part')){const flow=await resolveFlowParts(user,projectId,config.flow);checkExpandedFlow(config,flow);config={...config,flow};}
  await assertIdentityConfiguration(user,projectId,config);
  const project=await projectFor(user,projectId);const rights=await projectPermissionSet(user,project);
  for(const scope of agentSourceScopes(config))await agentScope(user,scope);

@@ -1,5 +1,10 @@
 import {operationsApi} from './work-operations.js';
 import {plansApi} from './work-plans.js';
+import {favoritesApi} from './work-favorites.js';
+import {planStrategyApi} from './plan-strategy.js';
+import {roadmapApi} from './work-roadmap.js';
+import {applyRoadmapDates} from './roadmap-dates.js';
+import {planAssistantApi} from './plan-assistant.js';
 import {onboardingApi} from './work-onboarding.js';
 import {agentsApi} from './work-agents.js';
 import {allureApi} from './work-allure.js';
@@ -34,6 +39,10 @@ import { personalApi } from './work-personal.js';
 import { recordingConferenceAccess } from './recordings.js';
 // Передаёт запрос соответствующему рабочему разделу, сохраняя отдельные проверки его прав.
 export async function handleWorkApi(request,path,user){
+  if(path[0]==='favorites')return favoritesApi(request,path,user);
+  if(path[0]==='roadmap')return path[1]==='apply'&&request.method==='POST'?applyRoadmapDates(request,user):roadmapApi(request,path,user);
+  if(path[0]==='plans'&&path[2]==='assistant')return planAssistantApi(request,path,user);
+  if(path[0]==='plans'&&['strategy','dependencies','reviews'].includes(path[2]))return planStrategyApi(request,path,user);
   if(path[0]==='plans')return plansApi(request,path,user);
   if(path[0]==='onboarding')return onboardingApi(request,user);
   if(path[0]==='agents')return agentsApi(request,path,user);
