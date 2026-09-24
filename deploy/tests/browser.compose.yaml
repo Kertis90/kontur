@@ -20,7 +20,11 @@ services:
     ports: ["127.0.0.1:13379:6379"]
     tmpfs: [/data]
   minio:
-    image: quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z
+    # Тесты используют тот же сервер, который собирается для standalone-поставки.
+    image: kontur-minio:2025-09-07
+    build:
+      context: ../storage
+      target: server
     profiles: [files]
     command: server /data
     environment:
@@ -28,3 +32,8 @@ services:
       MINIO_ROOT_PASSWORD: disposable-browser-storage
     ports: ["127.0.0.1:13900:9000"]
     tmpfs: [/data]
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:9000/minio/health/live"]
+      interval: 2s
+      timeout: 5s
+      retries: 30

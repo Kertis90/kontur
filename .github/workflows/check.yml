@@ -30,7 +30,15 @@ jobs:
       - run: npm run build
       - run: npx playwright install --with-deps chromium
       - name: Одноразовые MySQL, Redis и файлы
-        run: docker compose -f deploy/tests/browser.compose.yaml --profile files up -d --wait
+        run: docker compose -f deploy/tests/browser.compose.yaml --profile files up -d --build --wait
+      - name: Сборка клиента и создание приватного бакета
+        run: |
+          docker build --target client -t kontur-minio-client:2025-08-13 deploy/storage
+          docker run --rm --network kontur-browser-check_default --entrypoint /bin/sh kontur-minio-client:2025-08-13 -ec '
+            mc alias set check http://minio:9000 kontur_test disposable-browser-storage >/dev/null
+            mc mb --ignore-existing check/kontur-browser-test
+            mc anonymous set none check/kontur-browser-test
+          '
       - run: npm run test:browser:setup
       - run: npm run test:plans:mysql
       - run: npm run test:workspace:mysql

@@ -29,6 +29,10 @@ curl -fsS http://localhost:3000/api/health
 
 Сервис `migrate` один раз применяет схему MySQL и создаёт первого владельца до запуска app и worker. Повторный запуск безопасен.
 
+MinIO и клиент создания бакета собираются из закреплённых официальных исходников
+с проверкой SHA-256. Первая сборка требует доступа к исходникам и модулям Go;
+следующие используют кэш. [Версии и собственный реестр](../storage/README.md).
+
 ## Запуск готового образа
 
 Укажите в `.env`:
@@ -41,6 +45,7 @@ KONTUR_IMAGE=registry.company.ru/platform/kontur-work:0.21.0
 
 ```bash
 docker compose pull app worker recording-worker migrate egress
+docker compose build minio minio-init
 docker compose up -d --no-build
 ```
 

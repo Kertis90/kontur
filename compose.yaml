@@ -94,8 +94,11 @@ services:
     networks: [kontur]
 
   minio:
-    # Закреплённый образ того же сервера из доступного реестра; можно указать свой образ.
-    image: ${MINIO_IMAGE:-quay.io/minio/minio:RELEASE.2025-09-07T16-13-09Z}
+    # Собирает закреплённый выпуск из исходников; готовый образ можно хранить в своём реестре.
+    image: ${MINIO_IMAGE:-kontur-minio:2025-09-07}
+    build:
+      context: ./deploy/storage
+      target: server
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
@@ -113,8 +116,11 @@ services:
     networks: [kontur]
 
   minio-init:
-    # Клиент создания приватного бакета также загружается из доступного реестра.
-    image: ${MINIO_CLIENT_IMAGE:-quay.io/minio/mc:RELEASE.2025-08-13T08-35-41Z}
+    # Собирает клиент создания приватного бакета из проверенного архива исходников.
+    image: ${MINIO_CLIENT_IMAGE:-kontur-minio-client:2025-08-13}
+    build:
+      context: ./deploy/storage
+      target: client
     depends_on:
       minio:
         condition: service_healthy

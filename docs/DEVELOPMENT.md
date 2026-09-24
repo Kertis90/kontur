@@ -8,7 +8,7 @@ GitHub Actions выполняет серверные тесты, quality, сбо
 Он не использует рабочие реквизиты из `.env`.
 
 ```bash
-docker compose -f deploy/tests/browser.compose.yaml --profile files up -d --wait
+docker compose -f deploy/tests/browser.compose.yaml --profile files up -d --build --wait
 npm run test:browser:setup
 npm run test:plans:mysql
 npm run test:workspace:mysql
@@ -100,7 +100,7 @@ node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
 3. Поднимите только инфраструктуру:
 
 ```bash
-docker compose -p kontur-dev -f compose.yaml -f compose.dev.yaml up -d mysql redis minio minio-init livekit
+docker compose -p kontur-dev -f compose.yaml -f compose.dev.yaml up -d --build mysql redis minio minio-init livekit
 docker compose -p kontur-dev -f compose.yaml -f compose.dev.yaml ps -a
 ```
 
@@ -188,7 +188,7 @@ node --experimental-vm-modules --test scripts/agent-graph.test.mjs scripts/plans
 Для проверки интерфейса и планирования на отдельной MySQL:
 
 ```bash
-docker compose -f deploy/tests/browser.compose.yaml --profile files up -d --wait
+docker compose -f deploy/tests/browser.compose.yaml --profile files up -d --build --wait
 npm run test:browser:setup
 npm run test:plans:mysql
 npm run test:workspace:mysql
