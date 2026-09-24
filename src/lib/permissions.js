@@ -2,6 +2,9 @@ import {identityProjectPermissions,identityWorkspacePermissions} from './agent-i
 import { one, rows } from "./db.js";
 
 export const PERMISSION_CATALOG = [
+  { key: "planning.create", name: "Создание проектов-черновиков", category: "Планирование", scope: "workspace" },
+  { key: "planning.view", name: "Просмотр запланированных эпиков и задач", category: "Планирование", scope: "project" },
+  { key: "planning.manage", name: "Изменение планов и начало работы", category: "Планирование", scope: "project" },
   { key: "chat.room.create", name: "Создание постоянных комнат", category: "Коммуникации", scope: "workspace" },
   { key: "chat.room.join", name: "Вход в общие комнаты", category: "Коммуникации", scope: "workspace" },
   { key: "chat.room.manage", name: "Управление всеми комнатами", category: "Коммуникации", scope: "workspace" },

@@ -56,6 +56,7 @@ function Avatar({ user, online = false }) {
   );
 }
 
+// Показывает переписку в пределах окна и сохраняет переключение комнат и встреч.
 export default function CommunicationsView({ data, project, notify, initialChannelId }) {
   const [section, setSection] = useState("chat");
   const [channels, setChannels] = useState([]);
@@ -210,15 +211,10 @@ export default function CommunicationsView({ data, project, notify, initialChann
     data.permissions.projects[String(project?.id)] || {};
   const canCreateConference = projectPermissions["conference.create"];
   return (
-    <div className="view-page communications-page">
+    <div className={`view-page communications-page communications-${section}`}>
       <div className="page-head">
         <div>
-          <span className="overline">КОММУНИКАЦИИ</span>
           <h1>Чат и встречи</h1>
-          <p>
-            Сообщения, файлы и защищённые проектные конференции в одном рабочем
-            пространстве.
-          </p>
         </div>
         <div className="head-actions">
           <button
@@ -257,7 +253,7 @@ export default function CommunicationsView({ data, project, notify, initialChann
                 +
               </button>
             </div>
-            <button className="room-discover" onClick={()=>setSection("rooms")}># Найти комнату или создать свою</button>
+            <button className="room-discover" onClick={()=>setSection("rooms")}><span aria-hidden="true">⌕</span><span>Найти комнату</span><span aria-hidden="true">↗</span></button>
             {channels.map((channel) => (
               <button
                 className={channel.id === channelId ? "active" : ""}

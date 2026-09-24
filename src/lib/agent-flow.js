@@ -1,5 +1,7 @@
 import {z} from 'zod';
 import {WorkError} from './work-common.js';
+import {graphError} from './agent-graph.js';
+import {AGENT_ACTION_CATALOG} from './agent-catalog.js';
 const key=z.string().regex(/^[a-z][a-z0-9_]{0,31}$/).refine(v=>!['constructor','prototype','__proto__'].includes(v),'Зарезервированное имя');
 const scalar=z.union([z.string().max(4000),z.number().finite(),z.boolean()]);
 const path=z.string().max(160).regex(/^(metrics\.[a-z_]+|inputs\.[a-z][a-z0-9_]*|trigger\.(event_type|task_id|run_id)|steps\.[a-z][a-z0-9_]*\.(summary|count|matched|approved|values\.[a-z][a-z0-9_]*))$/).refine(v=>!v.split('.').some(p=>['constructor','prototype','__proto__'].includes(p)));
@@ -7,18 +9,19 @@ export const conditionSchema=z.object({mode:z.enum(['all','any']).default('all')
 const target=z.union([key,z.literal(''),z.literal('$end')]).default('');
 const base={id:key,name:z.string().trim().min(1).max(100),next:target};
 const point=z.object({x:z.number().min(0).max(6000),y:z.number().min(0).max(6000)}).strict();
-export const flowSchema=z.object({positions:z.record(key,point).refine(v=>Object.keys(v).length<=16).default({}),max_calls:z.number().int().min(1).max(12).default(8),nodes:z.array(z.discriminatedUnion('type',[
+export const flowSchema=z.object({entry:target,positions:z.record(z.union([key,z.enum(['$trigger','$sources','$end'])]),point).refine(v=>Object.keys(v).length<=35).default({}),max_calls:z.number().int().min(1).max(12).default(8),nodes:z.array(z.discriminatedUnion('type',[
+ z.object({...base,type:z.literal('action'),action:z.enum(AGENT_ACTION_CATALOG.map(a=>a.key)),prompt:z.string().trim().min(10).max(6000)}).strict(),
  z.object({...base,type:z.literal('analyze'),profile_id:z.string().uuid().nullable().default(null),prompt:z.string().trim().min(10).max(6000),fields:z.array(z.object({key,type:z.enum(['string','number','boolean'])}).strict()).max(10).default([])}).strict(),
  z.object({...base,type:z.literal('condition'),condition:conditionSchema,on_true:target,on_false:target}).strict(),
  z.object({...base,type:z.literal('approval'),message:z.string().trim().min(1).max(2000),reviewer_ids:z.array(z.number().int().positive()).max(20).default([]),timeout_hours:z.number().int().min(1).max(168).default(48)}).strict(),
  z.object({...base,type:z.literal('filter'),kinds:z.array(z.enum(['task','quality','article','conference','recording','chat','planning','objective'])).min(1).max(8),limit:z.number().int().min(1).max(200).default(100)}).strict(),
  z.object({...base,type:z.literal('template'),text:z.string().min(1).max(8000)}).strict(),
  z.object({...base,type:z.literal('stop'),text:z.string().min(1).max(8000)}).strict()
-])).max(16).default([])}).strict().superRefine((v,ctx)=>{
+])).max(32).default([])}).strict().superRefine((v,ctx)=>{
  const positions=new Map(v.nodes.map((n,i)=>[n.id,i]));
  if(positions.size!==v.nodes.length)ctx.addIssue({code:'custom',message:'ID шагов должны быть уникальны',path:['nodes']});
+ const error=graphError(v);if(error)ctx.addIssue({code:'custom',message:error,path:['nodes']});
  for(const [index,node]of v.nodes.entries()){
-  for(const to of [node.next,...(node.type==='condition'?[node.on_true,node.on_false]:[])])if(to&&to!=='$end'&&(!positions.has(to)||positions.get(to)<=index))ctx.addIssue({code:'custom',message:'Переход возможен только к существующему следующему шагу; циклы запрещены',path:['nodes',index]});
   if(node.fields&&new Set(node.fields.map(f=>f.key)).size!==node.fields.length)ctx.addIssue({code:'custom',message:'Поля результата должны быть уникальны',path:['nodes',index,'fields']});
  }
 });
@@ -57,14 +60,18 @@ export function parseNodeOutput(text,fields){
  const parsed=z.object({summary:z.string().max(10000),values:z.object(shape).strict().default({})}).strict().safeParse(value);
  if(!parsed.success)throw new WorkError(502,'Шаг ИИ вернул результат с неверными типами полей');return parsed.data;
 }
-export async function executeAgentFlow(config,context,{analyze,onStep=async()=>{},guard=async()=>{},approval=async()=>null,resume=null}){
+// Выполняет выбранную ветвь, сохраняя предложения действий до общего согласования.
+export async function executeAgentFlow(config,context,{analyze,action,onStep=async()=>{},guard=async()=>{},approval=async()=>null,resume=null}){
  const nodes=config.flow.nodes,state=resume?.state||{inputs:context.inputs||{},trigger:context.trigger||{},metrics:sourceMetrics(context.sources),steps:Object.create(null)},trace=[];
- let sources=resume?.sources||[...context.sources],index=resume?.index||0,stopped=false,summary='';
- while(index<nodes.length){
+ let sources=resume?.sources||[...context.sources],index=resume?.index??(config.flow.entry==='$end'?nodes.length:config.flow.entry?nodes.findIndex(n=>n.id===config.flow.entry):0),stopped=false,summary='';
+ const visited=new Set();
+ while(index>=0&&index<nodes.length){
+  if(visited.has(index))throw new WorkError(422,'Обнаружен цикл сценария');visited.add(index);
   const node=nodes[index],started=Date.now();await guard();await onStep({node,index,status:'running',input_count:sources.length});
   try{
    let output,next=node.next;
    if(node.type==='analyze')output=await analyze(node,renderAgentTemplate(node.prompt,state),sources,state);
+   if(node.type==='action'){if(!action)throw new WorkError(422,'Обработчик действий недоступен');output=await action(node,renderAgentTemplate(node.prompt,state),sources,state);}
    if(node.type==='approval'){output=await approval(node,{state,sources,index});if(!output)return {paused:true,node,state,sources,index,trace};}
    if(node.type==='condition'){const matched=matchesCondition(node.condition,state);output={matched};next=matched?node.on_true:node.on_false;}
    if(node.type==='filter'){sources=sources.filter(s=>node.kinds.includes(s.kind)).slice(0,node.limit);state.metrics=sourceMetrics(sources);output={count:sources.length};}

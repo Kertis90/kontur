@@ -32,6 +32,7 @@ jobs:
       - name: Одноразовые MySQL, Redis и файлы
         run: docker compose -f deploy/tests/browser.compose.yaml --profile files up -d --wait
       - run: npm run test:browser:setup
+      - run: npm run test:plans:mysql
       - run: npm run test:jira:mysql
       - run: npm run test:backup:mysql
       - run: npm run test:browser

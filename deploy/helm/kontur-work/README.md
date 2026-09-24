@@ -20,8 +20,8 @@ Helm chart разворачивает web-приложение, фоновые w
 Соберите и отправьте образ:
 
 ```bash
-docker build -t registry.company.ru/platform/kontur-work:0.19.0 .
-docker push registry.company.ru/platform/kontur-work:0.19.0
+docker build -t registry.company.ru/platform/kontur-work:0.20.0 .
+docker push registry.company.ru/platform/kontur-work:0.20.0
 ```
 
 Создайте namespace и Secret. Он должен существовать до запуска Helm, потому что pre-install Job применяет миграции до старта приложения:

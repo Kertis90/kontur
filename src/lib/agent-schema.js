@@ -36,7 +36,8 @@ export const agentConfigSchema=z.object({
  for(const [action,field]of [['move_task','allowed_stage_ids'],['assign_task','allowed_assignee_ids'],['create_article','article_space_ids'],['chat_message','chat_channel_ids'],['update_task','editable_fields']])if(v.actions.includes(action)&&!v.policy[field].length)issue('Настройте допустимые цели для действия '+action,['policy',field]);
  if(v.trigger.type!=='manual'&&v.inputs.some(i=>i.required&&(i.default===undefined||i.default==='')))issue('Автоматическим триггерам нужны значения обязательных параметров по умолчанию',['inputs']);
  if(new Set(v.actions).size!==v.actions.length)issue('Действия не должны повторяться',['actions']);
- if(v.flow.nodes.filter(n=>n.type==='analyze').length+1>v.flow.max_calls)issue('Лимит вызовов должен покрывать шаги анализа и итоговый ответ',['flow','max_calls']);
+ if(v.flow.nodes.filter(n=>['analyze','action'].includes(n.type)).length+1>v.flow.max_calls)issue('Лимит вызовов должен покрывать анализ, действия и итоговый ответ',['flow','max_calls']);
+ for(const [index,node] of v.flow.nodes.entries())if(node.type==='action'&&!v.actions.includes(node.action))issue('Разрешите выбранное действие в настройках агента',['flow','nodes',index,'action']);
 });
 export const agentSchema=z.object({project_id:positiveId,name:z.string().trim().min(2).max(160),enabled:z.boolean().default(false),revision:positiveId.optional(),config:agentConfigSchema}).strict();
 export function agentSourceScopes(config){const s=config.sources;return [...new Set([...(s.tasks.enabled?['tasks:read']:[]),...(s.quality.enabled?['quality:read']:[]),...(s.article_ids.length||s.knowledge?.space_ids.length||s.semantic?.enabled?['knowledge:read']:[]),...(s.conference_ids.length||s.recording_ids?.length?['conference:read']:[]),...(s.chat_channel_ids?.length?['chat:read']:[]),...(s.planning?['projects:read']:[]),...(s.objectives?['objectives:read']:[]),...(s.semantic?.enabled?['semantic:read']:[])])];}

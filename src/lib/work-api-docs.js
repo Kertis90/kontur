@@ -1,10 +1,12 @@
 import {AGENT_API_ENDPOINTS} from './agent-api-docs.js';
+import {PLAN_API_ENDPOINTS} from './plan-api-docs.js';
 import {EXPANSION_API_ENDPOINTS} from './expansion-api-docs.js';
 const json = example => ({ contentType: 'application/json', example });
 const endpoint = (tag, method, path, title, scope, description, extra = {}) => ({ tag, method, path: `/api/work/${path}`, title, scope, description, ...extra });
 const rule = { name: 'Напомнить о сроке', project_id: 1, enabled: true, trigger_type: 'scheduled', trigger_config: { interval_minutes: 1440 }, conditions: { mode: 'all', conditions: [{ field: 'due_date', operator: 'within_days', value: 2 }] }, actions: [{ type: 'branch', condition: { mode: 'all', conditions: [{ field: 'priority', operator: 'equals', value: 'critical' }] }, then: [{ type: 'notify_assignee', title: 'Проверьте критическую задачу' }], else: [{ type: 'notify_assignee', title: 'Приближается срок задачи' }] }] };
 const importExample = { project_id: 1, source: 'csv', text: 'Key,Summary,Status\nOLD-1,Подготовить план,В работе', mapping: { key: 'Key', title: 'Summary', status: 'Status' }, stages: { 'В работе': 2 } };
 export const WORK_API_ENDPOINTS = [
+  ...PLAN_API_ENDPOINTS,
   ...EXPANSION_API_ENDPOINTS,
   ...AGENT_API_ENDPOINTS,
   endpoint('Интеграции','GET','integrations','Каталог и подключения','integrations:read','Только активные доступные проекты. Секретные URL и токены не возвращаются. До 200 подключений на пространство.',{permission:'integration.view или integration.manage + project.browse'}),

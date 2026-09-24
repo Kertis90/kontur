@@ -166,7 +166,29 @@ git diff --check
 ```bash
 node --experimental-vm-modules --test scripts/chat-rooms.test.mjs
 node --experimental-vm-modules --test scripts/agent-workbench.test.mjs
+node --experimental-vm-modules --test scripts/agent-graph.test.mjs scripts/plans.test.mjs
 ```
+
+Для проверки интерфейса и планирования на отдельной MySQL:
+
+```bash
+docker compose -f deploy/tests/browser.compose.yaml up -d --wait
+npm run test:browser:setup
+npm run test:plans:mysql
+npm run test:jira:mysql
+npm run test:backup:mysql
+npm run build
+npx playwright install chromium
+npm run test:browser
+docker compose -f deploy/tests/browser.compose.yaml down
+```
+
+Стенд использует только явно заданные тестовые реквизиты и одноразовые данные.
+Подготовка добавляет выключенный профиль ИИ с адресом `.invalid` для проверки
+сохранения схемы: внешняя модель не вызывается. Браузер проверяет компьютер
+и телефон: конструктор, сохранение ветвей, чат, план → доска → рабочий эпик,
+обычные задачи, комнаты и права Jira. MySQL-проверка дополнительно проверяет
+доступ к черновикам, цели, версии, параллельное начало работы, архив и восстановление.
 
 Модульные/поведенческие тесты не требуют живой БД. Для проверки реального
 MySQL используйте **изолированные** профили с одноразовыми tmpfs-данными:

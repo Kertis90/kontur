@@ -90,13 +90,14 @@ test('recording output is hidden after transcription changes or recording access
  const ref={kind:'recording',id:1,conference_id:2,version:'v1'};await m.checkExtraAgentRef(user,3,ref);version='v2';await assert.rejects(()=>m.checkExtraAgentRef(user,3,ref),{status:409});revoked=true;await assert.rejects(()=>m.checkExtraAgentRef(user,3,ref),{status:403});
 });
 
-async function workerFixture({dry=false,gate=false,disabled=false,condition=false,active=false}={}){
- const c=await config({actions:['comment'],mode:'automatic',policy:{require_reasons:gate},...(condition?{trigger:{type:'manual',conditions:{rules:[{path:'metrics.task_count',operator:'greater',value:9}]}}}:{})}),run={id:20,agent_id:2,project_id:3,workspace_id:1,actor_id:7,api_token_id:null,agent_revision:1,status:'queued',config_json:c,trigger_context_json:{dry_run:dry}},agent={id:2,project_id:3,workspace_id:1,enabled:!disabled,revision:1,config_json:c};let calls=0,writes=0;const steps=[];
+// Подготавливает запуск с настоящей логикой сценария и управляемыми ответами модели.
+async function workerFixture({dry=false,gate=false,disabled=false,condition=false,active=false,configPatch={},answers=[]}={}){
+ const c=await config({actions:['comment'],mode:'automatic',policy:{require_reasons:gate},...(condition?{trigger:{type:'manual',conditions:{rules:[{path:'metrics.task_count',operator:'greater',value:9}]}}}:{}),...configPatch}),run={id:20,agent_id:2,project_id:3,workspace_id:1,actor_id:7,api_token_id:null,agent_revision:1,status:'queued',config_json:c,trigger_context_json:{dry_run:dry}},agent={id:2,project_id:3,workspace_id:1,enabled:!disabled,revision:1,config_json:c};let calls=0,writes=0;const steps=[];
  const m=await load('agent-runtime.js',{
   'agent-sources.js':{...sourceStubs,collectAgentSources:async()=>({project:{id:3},sources:[{kind:'task',id:10,title:'Task'}],refs:[{kind:'task',id:10,version:1}],meta:{included:1,characters:60}})},
   'agent-actions.js':{assertAgentAction:reject,executeAgentAction:async()=>{writes++;},agentActionPrompt:()=>''},
   'ai-settings.js':{getAiSettings:async()=>({}),chooseAiProfile:()=>({id:profileId,revision:'v1',model:'test',max_input_chars:12000}),aiProfileKey:()=>''},
-  'work-ai.js':{reserveWorkAi:async()=>{}},'ai-budget.js':{generateMeteredAi:async()=>{calls++;return {text:JSON.stringify({summary:'Анализ',actions:[{type:'comment',task_id:10,body:'Question'}]}),input_tokens:100,output_tokens:20};}},
+  'work-ai.js':{reserveWorkAi:async()=>{}},'ai-budget.js':{generateMeteredAi:async()=>{calls++;return {text:JSON.stringify(answers[calls-1]||{summary:'Анализ',actions:[{type:'comment',task_id:10,body:'Question'}]}),input_tokens:100,output_tokens:20};}},
   'db.js':{one:async sql=>sql.startsWith('SELECT * FROM ai_agents')?agent:sql.startsWith('SELECT status')?{status:run.status}:run,transaction:async fn=>fn({query:async(sql)=>{
    if(sql.startsWith('SELECT id FROM ai_agent_runs'))return [active?[{id:19}]:[]];if(sql.startsWith("UPDATE ai_agent_runs SET status='running'")){run.status='running';return [{affectedRows:1}];}return [[]];
   }}),rows:async(sql,p)=>{
@@ -114,6 +115,18 @@ test('dry run executes a paused automatic agent, persists proposals and cannot a
 });
 test('automatic result failing quality policy stays review without applying writes',async()=>{
  const f=await workerFixture({gate:true});await f.m.processAgentRun(20);assert.equal(f.calls,1);assert.equal(f.run.status,'review');assert.equal(f.run.source_meta_json.review_required,true);assert.equal(f.writes,0);await assert.rejects(()=>f.m.applyAgentRun(user,20,{automatic:true}),{status:409});
+});
+test('action proposals retain graph execution order and survive the final summary',async()=>{
+ const f=await workerFixture({dry:true,configPatch:{actions:['create_task'],flow:{entry:'first',nodes:[{id:'second',name:'Второй',type:'action',action:'create_task',prompt:'Создай вторую задачу.',next:'$end'},{id:'first',name:'Первый',type:'action',action:'create_task',prompt:'Создай первую задачу.',next:'second'}]}},answers:[{summary:'Первая',actions:[{type:'create_task',title:'Первая задача'}],confidence:.9},{summary:'Вторая',actions:[{type:'create_task',title:'Вторая задача'}],confidence:.8},{summary:'Общий результат',actions:[],confidence:.95}]});
+ await f.m.processAgentRun(20);assert.equal(f.run.status,'completed');assert.equal(f.calls,3);assert.deepEqual(f.run.result_json.actions.map(a=>a.title),['Первая задача','Вторая задача']);assert.equal(f.run.result_json.confidence,.8);assert.equal(f.writes,0);
+});
+test('final model cannot add an action from an unvisited branch',async()=>{
+ const f=await workerFixture({dry:true,configPatch:{flow:{entry:'$end',nodes:[{id:'unused',name:'Пропущено',type:'action',action:'comment',prompt:'Добавь комментарий к задаче.'}]}},answers:[{summary:'Нельзя выполнить',actions:[{type:'comment',task_id:10,body:'Вне ветви'}]}]});
+ await f.m.processAgentRun(20);assert.equal(f.run.status,'failed');assert.equal(f.calls,1);assert.equal(f.writes,0);assert.match(f.run.error_text,/неразрешённое действие/);
+});
+test('action blocks share the launch quota and cannot write before the complete result is checked',async()=>{
+ const f=await workerFixture({dry:true,configPatch:{max_actions:1,flow:{nodes:[{id:'first',name:'Первый',type:'action',action:'comment',prompt:'Добавь первый комментарий.'},{id:'second',name:'Второй',type:'action',action:'comment',prompt:'Добавь второй комментарий.'}]}},answers:[{summary:'Первый',actions:[{type:'comment',task_id:10,body:'Первый'}]}]});
+ await f.m.processAgentRun(20);assert.equal(f.run.status,'failed');assert.equal(f.calls,1);assert.equal(f.writes,0);assert.match(f.run.error_text,/Лимит действий/);
 });
 test('unmatched trigger conditions cost zero model calls and a running sibling blocks the queue claim',async()=>{
  const f=await workerFixture({condition:true});await f.m.processAgentRun(20);assert.equal(f.run.status,'completed');assert.equal(f.calls,0);

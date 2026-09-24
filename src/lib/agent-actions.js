@@ -39,7 +39,9 @@ export async function executeAgentAction(user,run,action,c,versions){
  }
  throw new WorkError(422,'Действие не поддерживается');
 }
+// Описывает разрешённые действия модели и явно запрещает их при пустом списке.
 export function agentActionPrompt(config){
+ if(!config.actions.length)return 'Действия запрещены. Верни actions: []';
  const examples={create_task:'{type:"create_task",title,description,priority,reason}',comment:'{type:"comment",task_id,body,reason}',update_task:'{type:"update_task",task_id,patch:{priority,due_date,start_date,progress,estimate_minutes,title,description},reason}; передавай только изменяемые поля',move_task:'{type:"move_task",task_id,stage_id,reason}',assign_task:'{type:"assign_task",task_id,assignee_id,reason}',checklist_item:'{type:"checklist_item",task_id,title,reason}',create_article:'{type:"create_article",space_id,title,body,reason}; только черновик',chat_message:'{type:"chat_message",channel_id,body,reason}'};
  return config.actions.map(a=>examples[a]).join('\n')+'\nОграничения целей и атрибутов: '+JSON.stringify({stage_ids:config.policy.allowed_stage_ids,assignee_ids:config.policy.allowed_assignee_ids,space_ids:config.policy.article_space_ids,channel_ids:config.policy.chat_channel_ids,editable_fields:config.policy.editable_fields});
 }

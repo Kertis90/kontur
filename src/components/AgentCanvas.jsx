@@ -1,34 +1,81 @@
 "use client";
 import {useId,useRef,useState} from 'react';
 import {AGENT_NODE_LABELS} from '../lib/agent-catalog.js';
-// Отображает сценарий с перемещением блоков, связями и масштабом по фактическим границам схемы.
-export default function AgentCanvas({flow,onChange,selected,onSelect,steps=[]}){
- const [zoom,setZoom]=useState(.8),[pan,setPan]=useState({x:25,y:20}),[dragged,setDragged]=useState({}),[connection,setConnection]=useState(null),[hint,setHint]=useState('');
+import {graphError,nodeEdges} from '../lib/agent-graph.js';
+const icons={trigger:'ϟ',source:'▤',final:'✦',analyze:'✦',condition:'◇',action:'↗',approval:'✓',filter:'≡',template:'T',stop:'◼'};
+
+// Показывает схему с перемещением каждого блока и связями, управляющими выполнением.
+export default function AgentCanvas({flow,onChange,selected,onSelect,onAdd,triggerLabel='Ручной запуск',steps=[]}) {
+ const [zoom,setZoom]=useState(.8),[pan,setPan]=useState({x:25,y:20}),[dragged,setDragged]=useState({}),[connection,setConnection]=useState(null),[hint,setHint]=useState(''),[full,setFull]=useState(false),[edge,setEdge]=useState(null);
  const pointer=useRef(null),canvas=useRef(null),marker=useId().replace(/:/g,'');
- const nodes=flow.nodes||[],readOnly=!onChange,positions=Object.fromEntries(nodes.map((n,i)=>[n.id,dragged[n.id]||flow.positions?.[n.id]||{x:40+(i%2)*350,y:100+Math.floor(i/2)*185}]));
- const end={x:40,y:100+Math.ceil(nodes.length/2)*185},terminal=[{id:'$start',name:'Источники и параметры',type:'start',point:{x:40,y:0}},{id:'$end',name:'Итоговый ответ',type:'final',point:end}];
- const edges=[];if(nodes.length)edges.push({from:'$start',to:nodes[0].id,key:'next'});else edges.push({from:'$start',to:'$end',key:'next'});
- for(const [i,n] of nodes.entries())for(const key of n.type==='condition'?['on_true','on_false']:n.type==='stop'?[]:['next'])edges.push({from:n.id,to:n[key]||nodes[i+1]?.id||'$end',key});
- const point=id=>positions[id]||terminal.find(t=>t.id===id)?.point||end;
- const width=Math.max(800,...Object.values(positions).map(p=>p.x+330)),height=Math.max(420,end.y+150,...Object.values(positions).map(p=>p.y+180));
- function connect(id){if(!connection)return;const from=nodes.findIndex(n=>n.id===connection.id),to=nodes.findIndex(n=>n.id===id);if(id!=='$end'&&to<=from){setHint('Связь должна вести к следующему шагу: циклы запрещены');setConnection(null);return;}onChange({...flow,nodes:nodes.map(n=>n.id===connection.id?{...n,[connection.key]:id}:n)});setConnection(null);setHint('Связь сохранена');}
- function start(e,id){if(readOnly||e.button!==0)return;e.preventDefault();e.stopPropagation();e.currentTarget.setPointerCapture(e.pointerId);pointer.current={id,x:e.clientX,y:e.clientY,origin:positions[id]};onSelect?.(id);}
- function move(e){const p=pointer.current;if(!p)return;if(p.id==='$pan'){setPan({x:p.origin.x+e.clientX-p.x,y:p.origin.y+e.clientY-p.y});return;}setDragged({[p.id]:{x:Math.max(0,Math.min(6000,Math.round(p.origin.x+(e.clientX-p.x)/zoom))),y:Math.max(70,Math.min(6000,Math.round(p.origin.y+(e.clientY-p.y)/zoom)))}});}
- function endDrag(){const p=pointer.current;if(p&&p.id!=='$pan'&&dragged[p.id])onChange({...flow,positions:{...flow.positions,[p.id]:dragged[p.id]}});pointer.current=null;setDragged({});}
- // Вписывает видимые блоки, не уменьшая короткую схему ради пустого пространства холста.
- function fit(){const points=[...Object.values(positions),...terminal.map(node=>node.point)],left=Math.min(...points.map(p=>p.x)),top=Math.min(...points.map(p=>p.y)),right=Math.max(...points.map(p=>p.x+290)),bottom=Math.max(...points.map(p=>p.y+128)),w=canvas.current?.clientWidth||700,h=canvas.current?.clientHeight||460,next=Math.max(.2,Math.min(1,(w-40)/(right-left),(h-40)/(bottom-top)));setZoom(next);setPan({x:20-left*next,y:20-top*next});}
- return <section className="agent-canvas-shell" aria-label="Схема агента">
-  <div className="canvas-toolbar"><strong>{readOnly?'Путь выполнения':'Карта сценария'}</strong><div><button type="button" className="secondary" onClick={()=>setZoom(Math.max(.2,zoom-.1))} aria-label="Уменьшить масштаб">−</button><output aria-label="Масштаб">{Math.round(zoom*100)}%</output><button type="button" className="secondary" onClick={()=>setZoom(Math.min(1.5,zoom+.1))} aria-label="Увеличить масштаб">+</button><button type="button" className="secondary" onClick={fit}>Вписать</button></div></div>
-  <div className="agent-canvas" ref={canvas} onPointerDown={e=>{if(e.target!==e.currentTarget||e.button!==0)return;e.currentTarget.setPointerCapture(e.pointerId);pointer.current={id:'$pan',x:e.clientX,y:e.clientY,origin:pan};}} onPointerMove={move} onPointerUp={endDrag} onPointerCancel={endDrag} onKeyDown={e=>{if(e.key==='Escape'){setConnection(null);setHint('');}}}>
+ const nodes=flow.nodes||[],readOnly=!onChange;
+ const blocks=[{id:'$trigger',name:triggerLabel,type:'trigger',description:'Когда начинать работу'},{id:'$sources',name:'Источники и параметры',type:'source',description:'Данные, доступные агенту'},...nodes,{id:'$end',name:'Итоговый ответ',type:'final',description:'Модель, сводка и предложения'}];
+ const positions=Object.fromEntries(blocks.map((n,i)=>[n.id,dragged[n.id]||flow.positions?.[n.id]||{x:40+(i%2)*350,y:30+Math.floor(i/2)*190}]));
+ const edges=[{from:'$trigger',to:'$sources',key:'fixed'},{from:'$sources',to:flow.entry||nodes[0]?.id||'$end',key:'entry'},...nodes.flatMap(n=>nodeEdges(nodes,n))];
+ const width=Math.max(800,...Object.values(positions).map(p=>p.x+330)),height=Math.max(510,...Object.values(positions).map(p=>p.y+180));
+ // Меняет переход и отклоняет связь, создающую цикл.
+ function connect(id) {
+  if(!connection||readOnly)return;
+  if(id.startsWith('$')&&id!=='$end'){setHint('Выберите шаг сценария или итоговый ответ');return;}
+  const next=connection.id==='$sources'?{...flow,entry:id}:{...flow,nodes:nodes.map(n=>n.id===connection.id?{...n,[connection.key]:id}:n)};
+  const error=graphError(next);if(error){setHint(error);setConnection(null);return;}
+  onChange(next);setConnection(null);setHint('Связь сохранена');
+ }
+ // Захватывает указатель для перемещения одного блока мышью или касанием.
+ function start(event,id) {
+  if(readOnly||event.button!==0||connection)return;
+  event.preventDefault();event.stopPropagation();event.currentTarget.setPointerCapture(event.pointerId);
+  pointer.current={id,x:event.clientX,y:event.clientY,origin:positions[id],last:positions[id]};onSelect?.(id);
+ }
+ // Обновляет положение блока или смещение холста.
+ function move(event) {
+  const current=pointer.current;if(!current)return;
+  if(current.id==='$pan'){setPan({x:current.origin.x+event.clientX-current.x,y:current.origin.y+event.clientY-current.y});return;}
+  current.last={x:Math.max(0,Math.min(6000,Math.round(current.origin.x+(event.clientX-current.x)/zoom))),y:Math.max(0,Math.min(6000,Math.round(current.origin.y+(event.clientY-current.y)/zoom)))};
+  setDragged({[current.id]:current.last});
+ }
+ // Сохраняет последнюю позицию при отпускании указателя.
+ function finish() {
+  const current=pointer.current;
+  if(current&&current.id!=='$pan'&&(current.last.x!==current.origin.x||current.last.y!==current.origin.y))onChange({...flow,positions:{...flow.positions,[current.id]:current.last}});
+  pointer.current=null;setDragged({});
+ }
+ // Вписывает фактические границы схемы в видимую часть холста.
+ function fit() {
+  const points=Object.values(positions),left=Math.min(...points.map(p=>p.x)),top=Math.min(...points.map(p=>p.y)),right=Math.max(...points.map(p=>p.x+290)),bottom=Math.max(...points.map(p=>p.y+128));
+  const next=Math.max(.2,Math.min(1,((canvas.current?.clientWidth||700)-40)/(right-left),((canvas.current?.clientHeight||510)-40)/(bottom-top)));
+  setZoom(next);setPan({x:20-left*next,y:20-top*next});
+ }
+ // Перемещает выбранный блок с клавиатуры на один шаг сетки.
+ function moveKey(event,id) {
+  if(readOnly||!event.altKey||!['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(event.key))return;
+  event.preventDefault();const p=positions[id];onChange({...flow,positions:{...flow.positions,[id]:{x:Math.max(0,Math.min(6000,p.x+(event.key==='ArrowLeft'?-20:event.key==='ArrowRight'?20:0))),y:Math.max(0,Math.min(6000,p.y+(event.key==='ArrowUp'?-20:event.key==='ArrowDown'?20:0)))}}});
+ }
+ // Добавляет перетащенный из библиотеки блок в точку отпускания.
+ function drop(event) {
+  event.preventDefault();const kind=event.dataTransfer.getData('application/kontur-agent');if(!onAdd||!AGENT_NODE_LABELS[kind])return;
+  const bounds=canvas.current.getBoundingClientRect();onAdd(kind,{x:Math.max(0,Math.min(6000,(event.clientX-bounds.left-pan.x)/zoom)),y:Math.max(0,Math.min(6000,(event.clientY-bounds.top-pan.y)/zoom))});
+ }
+ return <section className={`agent-canvas-shell ${full?'canvas-expanded':''}`} aria-label="Схема агента">
+  <div className="canvas-toolbar"><strong>{readOnly?'Путь выполнения':'Карта сценария'} <small>{nodes.length} блоков</small></strong><div>
+   <button type="button" className="secondary" onClick={()=>setZoom(Math.max(.2,zoom-.1))} aria-label="Уменьшить масштаб">−</button><output aria-label="Масштаб">{Math.round(zoom*100)}%</output><button type="button" className="secondary" onClick={()=>setZoom(Math.min(1.5,zoom+.1))} aria-label="Увеличить масштаб">+</button><button type="button" className="secondary" onClick={fit}>Вписать</button>
+   {!readOnly&&<button type="button" className="secondary" onClick={()=>onChange({...flow,positions:Object.fromEntries(blocks.map((n,i)=>[n.id,{x:40+i%3*350,y:30+Math.floor(i/3)*190}]))})}>Разложить</button>}
+   <button type="button" className="secondary" aria-label={full?'Свернуть схему':'Развернуть схему'} onClick={()=>setFull(!full)}>{full?'↙':'⛶'}</button>
+  </div></div>
+  <div className="agent-canvas" ref={canvas} onDragOver={event=>onAdd&&event.preventDefault()} onDrop={drop} onPointerDown={event=>{if(event.target!==event.currentTarget||event.button!==0)return;event.currentTarget.setPointerCapture(event.pointerId);pointer.current={id:'$pan',x:event.clientX,y:event.clientY,origin:pan};setEdge(null);}} onPointerMove={move} onPointerUp={finish} onPointerCancel={finish} onKeyDown={event=>{if(event.key==='Escape'){setConnection(null);setEdge(null);setFull(false);}}}>
    <div className="canvas-world" style={{width,height,transform:`translate(${pan.x}px,${pan.y}px) scale(${zoom})`}}>
-    <svg className="canvas-edges" width={width} height={height} aria-hidden="true"><defs><marker id={marker} markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="currentColor"/></marker></defs>{edges.map(e=>{const a=point(e.from),b=point(e.to),step=steps.find(s=>s.node_id===e.from),taken=Boolean(step?.status==='completed'&&(step.node_type!=='condition'||(e.key==='on_true')===step.output?.matched));const x=a.x+(e.key==='on_false'?205:85),y=a.y+(e.from==='$start'?60:128),x2=b.x+145,y2=b.y;return <g key={`${e.from}-${e.key}`} className={taken?'taken':''}><path d={`M${x} ${y} C${x} ${y+45},${x2} ${y2-40},${x2} ${y2}`} markerEnd={`url(#${marker})`}/>{e.key!=='next'&&<text x={x+8} y={y+25}>{e.key==='on_true'?'Да':'Нет'}</text>}</g>;})}</svg>
-    {terminal.map(n=><button type="button" className={`canvas-terminal ${connection&&n.id==='$end'?'connectable':''}`} key={n.id} style={{left:n.point.x,top:n.point.y}} onPointerUp={()=>n.id==='$end'&&connect(n.id)} onClick={()=>n.id==='$end'&&connect(n.id)}>{n.name}</button>)}
-    {nodes.map((n,i)=>{const state=steps.find(s=>s.node_id===n.id)?.status;return <article key={n.id} className={`canvas-node ${selected===n.id?'selected':''} ${state||''} ${connection?'connectable':''}`} style={{left:positions[n.id].x,top:positions[n.id].y}} onPointerUp={()=>connection&&connection.id!==n.id&&connect(n.id)}>
-     <button type="button" className="canvas-node-handle" title={readOnly?'Выбрать шаг':'Перетащите блок. Alt + стрелки перемещают с клавиатуры'} aria-label={`${i+1}. ${n.name}`} onPointerDown={e=>start(e,n.id)} onClick={()=>{if(connection)connect(n.id);else onSelect?.(n.id);}} onKeyDown={e=>{if(!readOnly&&e.altKey&&['ArrowLeft','ArrowRight','ArrowUp','ArrowDown'].includes(e.key)){e.preventDefault();const p=positions[n.id];onChange({...flow,positions:{...flow.positions,[n.id]:{x:Math.max(0,Math.min(6000,p.x+(e.key==='ArrowLeft'?-20:e.key==='ArrowRight'?20:0))),y:Math.max(70,Math.min(6000,p.y+(e.key==='ArrowUp'?-20:e.key==='ArrowDown'?20:0)))}}});}}}><span>{String(i+1).padStart(2,'0')} · {AGENT_NODE_LABELS[n.type]}</span><strong>{n.name}</strong><small>{state==='completed'?'✓ Выполнен':state==='failed'?'Ошибка':state==='running'?'Выполняется':n.id}</small></button>
-     {!readOnly&&n.type!=='stop'&&<div className="canvas-ports">{(n.type==='condition'?['on_true','on_false']:['next']).map(key=><button type="button" className={connection?.id===n.id&&connection.key===key?'active':''} key={key} title="Нажмите и выберите следующий блок или перетащите к нему" onPointerDown={e=>{e.stopPropagation();setConnection({id:n.id,key});setHint('Выберите блок назначения или «Итоговый ответ»');}} onClick={e=>{e.stopPropagation();setConnection({id:n.id,key});}}>{key==='next'?'Далее ○':key==='on_true'?'Да ○':'Нет ○'}</button>)}</div>}
+    <svg className="canvas-edges" width={width} height={height} aria-label="Связи блоков"><defs><marker id={marker} markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8" fill="currentColor"/></marker></defs>{edges.map(item=>{
+     const a=positions[item.from],b=positions[item.to];if(!a||!b)return null;
+     const step=steps.find(s=>s.node_id===item.from),taken=step?.status==='completed'&&(step.node_type!=='condition'||(item.key==='on_true')===step.output?.matched),x=a.x+(item.key==='on_false'?215:item.key==='on_true'?75:145),y=a.y+128,x2=b.x+145,y2=b.y;
+     return <g key={`${item.from}-${item.key}`} className={`${taken?'taken':''} ${edge?.from===item.from&&edge?.key===item.key?'selected-edge':''}`}><path d={`M${x} ${y} C${x} ${y+70},${x2} ${y2-65},${x2} ${y2}`} markerEnd={`url(#${marker})`} onClick={()=>!readOnly&&item.key!=='fixed'&&setEdge(item)}/>{['on_true','on_false'].includes(item.key)&&<text x={x+10} y={y+25}>{item.key==='on_true'?'Да':'Нет'}</text>}</g>;
+    })}</svg>
+    {blocks.map((node,index)=>{const state=steps.find(s=>s.node_id===node.id)?.status,ports=node.id==='$sources'?['entry']:node.id.startsWith('$')||node.type==='stop'?[]:node.type==='condition'?['on_true','on_false']:['next'];return <article data-node-id={node.id} key={node.id} className={`canvas-node node-${node.type} ${selected===node.id?'selected':''} ${state||''} ${connection?'connectable':''}`} style={{left:positions[node.id].x,top:positions[node.id].y}} onPointerUp={()=>connection&&connection.id!==node.id&&connect(node.id)}>
+     <button type="button" className="canvas-node-handle" title="Перетащите блок. Alt + стрелки — перемещение с клавиатуры" aria-label={`${index+1}. ${node.name}`} onPointerDown={event=>start(event,node.id)} onClick={()=>connection?connect(node.id):onSelect?.(node.id)} onKeyDown={event=>moveKey(event,node.id)}><span><b className="node-icon">{icons[node.type]}</b>{AGENT_NODE_LABELS[node.type]||{trigger:'Триггер',source:'Данные',final:'Завершение'}[node.type]}</span><strong>{node.name}</strong><small>{state==='completed'?'✓ Выполнен':state==='failed'?'Ошибка':node.description||'Нажмите, чтобы настроить'}</small></button>
+     {!readOnly&&ports.length>0&&<div className="canvas-ports">{ports.map(key=><button type="button" key={key} className={connection?.id===node.id&&connection.key===key?'active':''} aria-label={`${node.name}: ${key==='on_true'?'Да':key==='on_false'?'Нет':'Далее'}`} onPointerDown={event=>{event.stopPropagation();setConnection({id:node.id,key});setHint('Выберите блок назначения');}} onClick={event=>{event.stopPropagation();setConnection({id:node.id,key});setHint('Выберите блок назначения');}}>{key==='on_true'?'Да ○':key==='on_false'?'Нет ○':'Далее ○'}</button>)}</div>}
     </article>;})}
    </div>
+   {edge&&!readOnly&&<div className="canvas-edge-editor"><span>Связь: {blocks.find(n=>n.id===edge.from)?.name}</span><button type="button" onClick={()=>{setConnection({id:edge.from,key:edge.key});setEdge(null);setHint('Выберите новое назначение');}}>Изменить</button><button type="button" onClick={()=>{onChange(edge.from==='$sources'?{...flow,entry:'$end'}:{...flow,nodes:nodes.map(n=>n.id===edge.from?{...n,[edge.key]:'$end'}:n)});setEdge(null);}}>К завершению</button></div>}
   </div>
-  <p className="canvas-hint" role="status">{hint|| (readOnly?'Зелёным отмечены выполненные блоки и пройденные связи.':'Перетаскивайте блоки и свободное поле. Для связи выберите выход блока, затем следующий блок. Esc — отмена.')}</p>
+  <p className="canvas-hint" role="status">{hint||(readOnly?'Зелёным отмечен пройденный путь.':'Перетащите блок из библиотеки. Соедините выход с нужным блоком. Alt + стрелки — перемещение, Esc — отмена.')}</p>
  </section>;
 }

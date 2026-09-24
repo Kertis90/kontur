@@ -1,6 +1,8 @@
 import { one, parseJson } from "./db.js";
 
 export const API_SCOPE_CATALOG = [
+  { key: "planning:read", name: "Проекты-черновики, эпики и планы", mode: "Чтение" },
+  { key: "planning:write", name: "Изменение планов и начало работы", mode: "Изменение" },
   { key: "agents:identities", name: "Учётные записи агентов", mode: "Изменение" },
   { key: "agents:read", name: "Агенты и журнал запусков", mode: "Чтение" },
   { key: "agents:write", name: "Настройка агентов", mode: "Изменение" },
@@ -43,7 +45,7 @@ export const API_SCOPE_CATALOG = [
   { key: "telephony:write", name: "Исходящие звонки и управление ими", mode: "Изменение" },
 ];
 
-export const DEFAULT_API_SCOPES = API_SCOPE_CATALOG.filter((item) => !["agents:identities", "agents:read", "agents:write", "agents:run", "agents:approve", "operations:read", "imports:read", "imports:write", "semantic:read", "semantic:write", "quality:read", "quality:write", "objectives:read", "objectives:write", "sync:read", "sync:write", "integrations:read", "integrations:write", "integrations:send", "automation:read", "automation:write", "projects:write", "knowledge:write", "telephony:write", "ai:read", "ai:write"].includes(item.key)).map((item) => item.key);
+export const DEFAULT_API_SCOPES = API_SCOPE_CATALOG.filter((item) => !["planning:read", "planning:write", "agents:identities", "agents:read", "agents:write", "agents:run", "agents:approve", "operations:read", "imports:read", "imports:write", "semantic:read", "semantic:write", "quality:read", "quality:write", "objectives:read", "objectives:write", "sync:read", "sync:write", "integrations:read", "integrations:write", "integrations:send", "automation:read", "automation:write", "projects:write", "knowledge:write", "telephony:write", "ai:read", "ai:write"].includes(item.key)).map((item) => item.key);
 
 export function apiScopes(value) {
   const stored = parseJson(value, []);
@@ -55,6 +57,7 @@ export function apiScopes(value) {
   return [...new Set(expanded.filter((scope) => API_SCOPE_CATALOG.some((item) => item.key === scope)))];
 }
 
+// Выбирает разрешение API по разделу и операции, отдельно учитывая закрытые планы.
 function routeScope(request) {
   const parts = new URL(request.url).pathname.replace(/^\/api\/?/, "").split("/").filter(Boolean);
   const root = parts[0] || "";
@@ -62,6 +65,7 @@ function routeScope(request) {
   if (root === "work") {
     const module = parts[1];
     if (module === "push") return null;
+    if (module === "plans") return read ? "planning:read" : "planning:write";
     if (module === "operations") return read ? "operations:read" : null;
     if (module === "jira-imports") return parts[2] === "task" ? "tasks:read" : read ? "imports:read" : "imports:write";
     if (module === "semantic") return parts[2] === "settings" ? null : parts[2] === "search" || read ? "semantic:read" : "semantic:write";

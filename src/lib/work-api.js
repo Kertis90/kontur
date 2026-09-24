@@ -1,4 +1,5 @@
 import {operationsApi} from './work-operations.js';
+import {plansApi} from './work-plans.js';
 import {onboardingApi} from './work-onboarding.js';
 import {agentsApi} from './work-agents.js';
 import {allureApi} from './work-allure.js';
@@ -33,6 +34,7 @@ import { personalApi } from './work-personal.js';
 import { recordingConferenceAccess } from './recordings.js';
 // Передаёт запрос соответствующему рабочему разделу, сохраняя отдельные проверки его прав.
 export async function handleWorkApi(request,path,user){
+  if(path[0]==='plans')return plansApi(request,path,user);
   if(path[0]==='onboarding')return onboardingApi(request,user);
   if(path[0]==='agents')return agentsApi(request,path,user);
   if(path[0]==='allure')return allureApi(request,path,user);
