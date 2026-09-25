@@ -3,6 +3,24 @@ x-kontur-image: &kontur-image
   build:
     context: .
     dockerfile: Dockerfile
+    # Необязательные зеркала пакетов; пустые значения в .env берут публичные адреса.
+    args:
+      NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmjs.org/}
+      ALPINE_MIRROR: ${ALPINE_MIRROR:-https://dl-cdn.alpinelinux.org/alpine}
+
+# Необязательные зеркала для сборки хранилища. Аргументы без значения не передаются
+# в сборку, пока соответствующая переменная не задана, и Dockerfile берёт свой
+# публичный адрес по умолчанию.
+x-storage-build-args: &storage-build-args
+  ARCHIVE_BASE: ${ARCHIVE_BASE:-https://codeload.github.com}
+  DEBIAN_MIRROR: ${DEBIAN_MIRROR:-http://deb.debian.org/debian}
+  DEBIAN_SECURITY_MIRROR: ${DEBIAN_SECURITY_MIRROR:-http://deb.debian.org/debian-security}
+  GO_PROXY: ${GO_PROXY:-https://proxy.golang.org,direct}
+  GO_SUMDB: ${GO_SUMDB:-sum.golang.org}
+  MINIO_SOURCE_URL:
+  MC_SOURCE_URL:
+  MINIO_SOURCE_SHA256:
+  MC_SOURCE_SHA256:
 
 x-app-environment: &app-environment
   NODE_ENV: production
@@ -111,6 +129,7 @@ services:
     build:
       context: ./deploy/storage
       target: server
+      args: *storage-build-args
     restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
@@ -133,6 +152,7 @@ services:
     build:
       context: ./deploy/storage
       target: client
+      args: *storage-build-args
     depends_on:
       minio:
         condition: service_healthy

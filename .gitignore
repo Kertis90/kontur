@@ -19,6 +19,9 @@ __pycache__/
 backups/
 scripts/load/users.json
 
+# Локальные адреса зеркал и скрипт установки для закрытого контура.
+/local/
+
 # Local credentials and generated handoff archives
 secrets/
 *.pem

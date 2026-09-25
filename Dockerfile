@@ -1,4 +1,11 @@
+# Внешние источники задаются опционально. Без переопределения используются
+# публичные адреса, поэтому обычная сборка работает как раньше.
+ARG NPM_REGISTRY=https://registry.npmjs.org/
+ARG ALPINE_MIRROR=https://dl-cdn.alpinelinux.org/alpine
+
 FROM node:22-alpine AS dependencies
+ARG NPM_REGISTRY
+ENV npm_config_registry=${NPM_REGISTRY}
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
@@ -11,12 +18,15 @@ COPY . .
 RUN npm run build
 
 FROM node:22-alpine AS runner
+ARG ALPINE_MIRROR
 WORKDIR /app
 ENV NODE_ENV=production \
     NEXT_TELEMETRY_DISABLED=1 \
     PORT=3000 \
     HOSTNAME=0.0.0.0
-RUN apk add --no-cache ffmpeg && addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs
+# Заменяется только базовый адрес; версия выпуска и разделы main/community остаются из образа.
+RUN sed -i "s#https\?://dl-cdn\.alpinelinux\.org/alpine#${ALPINE_MIRROR}#g" /etc/apk/repositories \
+    && apk add --no-cache ffmpeg && addgroup --system --gid 1001 nodejs && adduser --system --uid 1001 nextjs
 COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
