@@ -4,6 +4,11 @@
 Выбор задаётся через `DB_ENGINE=mysql|postgres`; MySQL остаётся значением
 по умолчанию. Один образ приложения обслуживает оба варианта.
 
+Код: [`35b0c14`](https://github.com/Kertis90/kontur/commit/35b0c1433897db590aca1c615b9108120fe7cb71),
+опубликован в main. Все четыре задания
+[GitHub Actions](https://github.com/Kertis90/kontur/actions/runs/36090557680)
+прошли: приложение с MySQL, приложение с PostgreSQL и две проверки миграций.
+
 ## Что изменилось
 
 - Добавлены подключение PostgreSQL, отдельные миграции, ограничения целостности,
