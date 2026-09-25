@@ -1,7 +1,8 @@
 # Начать работу в своём Git и VS Code
 
-Текущий репозиторий обновлён до **0.21.0**: [изменения](docs/RELEASE-0.21.0.md),
-[результаты проверок](docs/WORKSPACE-0.21-PLAN.md),
+Текущая версия **0.22.0** добавляет [выбор MySQL/PostgreSQL](docs/DATABASES.md):
+[изменения и проверки](docs/RELEASE-0.22.0.md),
+[план и проверки](docs/DATABASE-CHOICE-PLAN.md),
 [контекст разработки](docs/HANDOFF.md). Ниже сохранены инструкции первоначального
 архива 0.18.0; его `SOURCE-MANIFEST.json` описывает именно тот исходный снимок.
 
@@ -44,7 +45,7 @@ git push -u origin main
 | --- | --- |
 | Разработка с горячим обновлением, сервер и worker в VS Code | [DEVELOPMENT.md](docs/DEVELOPMENT.md) |
 | Все компоненты на одном Docker-сервере | [Standalone](deploy/standalone/README.md) и `.env.example` |
-| Kubernetes и внешние HA MySQL/Redis/S3 | [Helm](deploy/helm/kontur-work/README.md) |
+| Kubernetes и внешние MySQL/PostgreSQL, Redis и S3 | [Helm](deploy/helm/kontur-work/README.md) |
 | Перенос существующей БД и обновление | [DATABASE-UPGRADES.md](docs/DATABASE-UPGRADES.md) |
 
 Для VS Code потребуются Node.js 22.13+ (рекомендуется ветка 22), Git,

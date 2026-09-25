@@ -1,0 +1,14 @@
+# Примените вместе со своими значениями и Secret; PostgreSQL разворачивается отдельно.
+database:
+  engine: postgres
+  host: postgres-primary.database.svc.cluster.local
+  port: 5432
+  name: kontur_work
+  user: kontur
+  poolSize: 12
+  ssl:
+    enabled: true
+    rejectUnauthorized: true
+    ca: ""
+backup:
+  postgresImage: postgres:18-bookworm

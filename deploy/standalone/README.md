@@ -1,5 +1,10 @@
 # Standalone-развёртывание в Docker
 
+В 0.22 добавлена новая установка на PostgreSQL 18: задайте `DB_ENGINE=postgres`,
+`POSTGRES_PASSWORD`, `POSTGRES_ADMIN_PASSWORD` и используйте
+`docker compose -f compose.yaml -f compose.postgres.yaml up -d --build --wait`.
+MySQL остаётся вариантом по умолчанию. [Выбор БД и копии](../../docs/DATABASES.md).
+
 Этот профиль запускает Контур Work, worker, recording-worker, MySQL 8.4, Redis, MinIO, LiveKit Egress и LiveKit SFU со встроенным TURN на одном сервере через Docker Compose. Опциональный профиль `gateway` добавляет Caddy с автоматическим HTTPS для приложения и signal endpoint LiveKit. Отказ хоста остановит всю платформу, поэтому для мероприятия примерно на 1000 человек используйте Kubernetes-профиль либо отдельный заранее протестированный media-сервер.
 
 ## Требования и запуск

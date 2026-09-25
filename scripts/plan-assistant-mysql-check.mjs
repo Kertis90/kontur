@@ -24,5 +24,5 @@ try{
  await rows('UPDATE work_plans SET objective_id=NULL,revision=revision+1 WHERE id=?',[linked.id]);await rows('DELETE FROM work_objectives WHERE id=?',[goal.insertId]);
  await assert.rejects(()=>call(assistant.planAssistantApi,'GET',`plans/${linked.id}/assistant/${goalProposal.id}`),{status:422});
  await assert.rejects(()=>call(assistant.planAssistantApi,'POST',`plans/${linked.id}/assistant`,goalRequest),{status:422});assert.equal(calls,3);assert.equal((await call(plansApi,'GET',`plans/${linked.id}`)).items.length,0);
- console.log('ИИ планирования MySQL: генерация, защита от повторной оплаты, явный выбор, изменение плана и повторная проверка исходной цели — проверены.');
+ console.log((browserEnv.DB_ENGINE==='postgres'?'PostgreSQL: ':'MySQL: ')+"ИИ планирования генерация, защита от повторной оплаты, явный выбор, изменение плана и повторная проверка исходной цели — проверены.");
 }finally{await db.end();}

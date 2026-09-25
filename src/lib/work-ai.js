@@ -84,6 +84,7 @@ async function searchSources(user,query){
   const transcripts=[];for(const chunk of transcriptRows){try{await assertRecording(user,chunk.conference_id,chunk.recording_id);transcripts.push(chunk);if(transcripts.length>=20)break;}catch(e){if(![403,404].includes(e.status))throw e;}}
   return [...tasks.map(t=>({...t,kind:'task',source_id:`task-${t.id}`,url:`/?task=${t.id}`})),...allowedArticles.map(a=>({...a,kind:'article',source_id:`article-${a.id}`,url:`/?view=knowledge&article=${a.id}`})),...transcripts.map(t=>({...t,kind:'recording',source_id:`recording-${t.recording_id}-${t.chunk_index}`,url:`/?view=work&tab=meetings&conference=${t.conference_id}&recording=${t.recording_id}&at=${t.start_seconds}`}))];
 }
+// Управляет поручениями встреч и создаёт протокол только из подтверждённых поручений.
 export async function workAiApi(request,path,user){
   const method=request.method;
   if(path[0]==='ai-search'&&method==='POST'){
@@ -116,7 +117,8 @@ export async function workAiApi(request,path,user){
     if(method==='POST'&&path[2]==='publish'){
       const d=z.object({space_id:positiveId,title:z.string().trim().min(2).max(300)}).parse(await body(request));
       const access=await knowledgeSpaceAccess(user,d.space_id);if(!knowledgeAccessAtLeast(access.level,'edit'))throw new WorkError(403,'Нет права создавать статьи в пространстве');
-      const actions=await rows("SELECT a.*,u.display_name AS assignee_name FROM meeting_actions a LEFT JOIN users u ON u.id=a.assignee_id WHERE conference_id=? AND status='accepted' ORDER BY a.id",[conference.id]);
+      // Статус относится к поручению, а не к присоединённой учётной записи исполнителя.
+      const actions=await rows("SELECT a.*,u.display_name AS assignee_name FROM meeting_actions a LEFT JOIN users u ON u.id=a.assignee_id WHERE a.conference_id=? AND a.status='accepted' ORDER BY a.id",[conference.id]);
       if(!actions.length)throw new WorkError(422,'Сначала подтвердите поручения');
       const content=`# ${conference.title}\n\nПодтверждённые поручения:\n\n${actions.map(a=>`- ${a.title} — ${a.assignee_name||'исполнитель не назначен'}, срок: ${a.due_date||'не указан'}. [Задача](/?task=${a.task_id})`).join('\n')}`;
       const created=await rows("INSERT INTO knowledge_articles(space_id,title,slug,body,status,author_id) VALUES(?,?,?,?,'draft',?)",[d.space_id,d.title,`meeting-${conference.id}-${crypto.randomUUID().slice(0,8)}`,content,user.id]);return reply({article_id:created.insertId},201);

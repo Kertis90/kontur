@@ -37,4 +37,13 @@ export async function decideAgentGate(user,run,d,verifyRun){
   await c.query("UPDATE ai_agent_runs SET status='queued',source_meta_json=? WHERE id=?",[JSON.stringify(meta),run.id]);return {status:'queued'};
  });
 }
-export async function expireAgentGates(){await rows("UPDATE ai_agent_runs r JOIN ai_agent_checkpoints c ON c.run_id=r.id SET r.status='failed',r.error_text='Срок согласования шага истёк',r.completed_at=CURRENT_TIMESTAMP,c.status='expired' WHERE r.status='review' AND c.status='waiting' AND c.expires_at<=CURRENT_TIMESTAMP");}
+// Закрывает просроченные согласования и запуски атомарно в обеих поддерживаемых БД.
+export async function expireAgentGates(){
+ await transaction(async c=>{
+  const [expired]=await c.query("SELECT r.id FROM ai_agent_runs r JOIN ai_agent_checkpoints c ON c.run_id=r.id WHERE r.status='review' AND c.status='waiting' AND c.expires_at<=CURRENT_TIMESTAMP FOR UPDATE");
+  for(const run of expired){
+   await c.query("UPDATE ai_agent_runs SET status='failed',error_text='Срок согласования шага истёк',completed_at=CURRENT_TIMESTAMP WHERE id=?",[run.id]);
+   await c.query("UPDATE ai_agent_checkpoints SET status='expired' WHERE run_id=?",[run.id]);
+  }
+ });
+}

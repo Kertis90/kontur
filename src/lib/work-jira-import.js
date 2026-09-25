@@ -19,6 +19,7 @@ async function actorFor(user,projectId,write=true){
 const decode=row=>JSON.parse(decryptSecret(row.payload_encrypted));
 async function ownJob(user,id){const j=await one('SELECT * FROM jira_import_jobs WHERE id=? AND workspace_id=? AND user_id=?',[positiveId.parse(id),user.workspace_id,user.id]);if(!j)throw new WorkError(404,'Импорт не найден');return j;}
 // Обслуживает импорт из файла и управляемый переезд с подключённого сервера Jira.
+// Проверяет пакет импорта и сохраняет задачи, историю и описание файлов с единым составом полей.
 export async function jiraImportApi(request,path,user){
  if(path[1]==='sources')return jiraTransferApi(request,path,user);
  if(path[1]==='task'&&request.method==='GET'){
@@ -40,7 +41,7 @@ export async function jiraImportApi(request,path,user){
   const fingerprint=semanticHash(JSON.stringify({project_id:d.project_id,records:plan.records,extras,include_attachments:d.include_attachments}));
   const id=await transaction(async c=>{await c.query('SELECT id FROM users WHERE id=? FOR UPDATE',[user.id]);const [[pending]]=await c.query("SELECT COUNT(*) AS total FROM jira_import_jobs WHERE user_id=? AND status NOT IN ('completed','cancelled')",[user.id]);if(pending.total>=10)throw new WorkError(409,'Завершите или отмените один из 10 незавершённых импортов');const [result]=await c.query('INSERT INTO jira_import_jobs(workspace_id,project_id,user_id,api_token_id,total,preview_hash,include_attachments) VALUES(?,?,?,?,?,?,?)',[user.workspace_id,d.project_id,user.id,user.api_token_id||null,plan.total,fingerprint,d.include_attachments]);
    for(let i=0;i<plan.records.length;i++){const r=plan.records[i],extra=extras[i];if(!d.include_attachments&&extra.attachments.length)r.warnings.push('Перенос файлов отключён для этого пакета');if(r.duplicate)r.warnings.push('Задача уже импортирована; история и файлы существующей задачи не изменяются');await c.query('INSERT INTO jira_import_records(job_id,row_index,external_key,payload_encrypted,warnings_json) VALUES(?,?,?,?,?)',[result.insertId,r.row,r.external_key,encryptSecret(JSON.stringify({task:r.task,...extra})),JSON.stringify(r.warnings)]);
-    if(d.include_attachments&&!r.duplicate)for(const file of extra.attachments)await c.query('INSERT INTO jira_import_files(job_id,row_index,external_id,file_name,expected_size,mime_type) VALUES(?,?,?,?,?,?,?)',[result.insertId,r.row,file.external_id,safeFileName(file.file_name),file.expected_size,file.mime_type]);}
+    if(d.include_attachments&&!r.duplicate)for(const file of extra.attachments)await c.query('INSERT INTO jira_import_files(job_id,row_index,external_id,file_name,expected_size,mime_type) VALUES(?,?,?,?,?,?)',[result.insertId,r.row,file.external_id,safeFileName(file.file_name),file.expected_size,file.mime_type]);}
    return result.insertId;});await audit(user,'jira.preview.created','jira_import',id);return reply({...plan,id,revision:1,preview_hash:fingerprint},201);
  }
  const job=await ownJob(user,path[1]);user=await actorFor(user,job.project_id,request.method!=='GET');

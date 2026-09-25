@@ -1001,6 +1001,7 @@ async function oidcCallback(request) {
   return response;
 }
 
+// Возвращает доступные пользователю данные с одинаковыми правилами чтения для обеих БД.
 async function handleGet(request, path) {
   if (path.join("/") === "openapi.json") {
     const origin = new URL(process.env.APP_URL || request.url).origin;
@@ -1064,7 +1065,7 @@ async function handleGet(request, path) {
       LEFT JOIN chat_rooms room ON room.channel_id=channel.id
       LEFT JOIN chat_channel_members own_member ON own_member.channel_id=channel.id AND own_member.user_id=?
       WHERE channel.workspace_id=? AND (channel.project_id IS NOT NULL OR own_member.user_id IS NOT NULL) AND (room.channel_id IS NULL OR own_member.user_id IS NOT NULL)
-      ORDER BY COALESCE(last_message_at, channel.created_at) DESC`,
+      ORDER BY COALESCE((SELECT MAX(message.created_at) FROM chat_messages message WHERE message.channel_id=channel.id), channel.created_at) DESC`,
       [user.id, user.id, user.id, user.workspace_id],
     );
     const visible = [];
@@ -1689,6 +1690,7 @@ async function handleGet(request, path) {
   throw new ApiError(404, "Маршрут не найден");
 }
 
+// Создаёт и изменяет рабочие объекты с проверкой прав и атомарным переносом задач между спринтами.
 async function handlePost(request, path) {
   if (path.join("/") === "auth/login") return handleLogin(request);
   if (path.join("/") === "auth/mfa") {
@@ -2664,8 +2666,9 @@ async function handlePost(request, path) {
     const taskId = await transaction(async (connection) => {
       if (data.dependencies?.length) await connection.query("SELECT id FROM workspaces WHERE id=? FOR UPDATE", [user.workspace_id]);
       await connection.query("SELECT id FROM projects WHERE id=? FOR UPDATE", [project.id]);
+      // Строка проекта уже защищает общий счётчик; агрегат не требует отдельной блокировки.
       const [[counter]] = await connection.query(
-        "SELECT COALESCE(MAX(task_number), 0) + 1 AS next_number, COALESCE(MAX(position),0)+1000 AS next_position FROM tasks WHERE project_id = ? FOR UPDATE",
+        "SELECT COALESCE(MAX(task_number), 0) + 1 AS next_number, COALESCE(MAX(position),0)+1000 AS next_position FROM tasks WHERE project_id = ?",
         [project.id],
       );
       const [result] = await connection.query(
@@ -3360,7 +3363,7 @@ async function handlePost(request, path) {
           [sprintId],
         );
         await connection.query(
-          "UPDATE tasks t JOIN workflow_stages ws ON ws.id=t.stage_id SET t.sprint_id=? WHERE t.sprint_id=? AND ws.is_done=FALSE",
+          "UPDATE tasks SET sprint_id=? WHERE sprint_id=? AND stage_id IN (SELECT id FROM workflow_stages WHERE is_done=FALSE)",
           [body.move_open_to_sprint_id || null, sprintId],
         );
         await emitEvent(

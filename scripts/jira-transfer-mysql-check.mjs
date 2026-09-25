@@ -92,7 +92,8 @@ try {
   assert.equal(JSON.stringify(result).includes('disposable-jira-token'), false);
   const [itemA, itemB] = await rows('SELECT * FROM jira_transfer_items WHERE source_id=? ORDER BY id', [sourceId]);
   assert.ok(await one('SELECT * FROM task_dependencies WHERE task_id=? AND depends_on_task_id=?', [itemB.task_id, itemA.task_id]));
-  assert.ok(await one("SELECT * FROM task_revisions WHERE task_id=? AND changes_json LIKE '%jira_links%'", [itemB.task_id]));
+  // Сверяет запись истории по текстовому представлению JSON в обеих БД.
+  assert.ok(await one("SELECT * FROM task_revisions WHERE task_id=? AND CAST(changes_json AS CHAR) LIKE '%jira_links%'", [itemB.task_id]));
   remoteTitle = 'Обновлено в Jira';
   result = await transfer();
   assert.equal((await one('SELECT title FROM tasks WHERE id=?', [itemA.task_id])).title, remoteTitle);
@@ -114,5 +115,5 @@ try {
   await assert.rejects(() => call('POST', `/${sourceId}/actions`, {action: 'prepare', revision: result.revision}));
   await rows("UPDATE users SET status='blocked' WHERE id=?", [user.id]);
   await assert.rejects(() => call('GET', `/${sourceId}`));
-  console.log('MySQL/S3: страницы Jira, пауза, повтор после лимита, защита версий и прежнего импорта, обновление, история, файлы, связи, конфликт, переключение и отзыв доступа проверены.');
+  console.log((browserEnv.DB_ENGINE==='postgres'?'PostgreSQL: ':'MySQL: ')+"страницы Jira, пауза, повтор после лимита, защита версий и прежнего импорта, обновление, история, файлы, связи, конфликт, переключение и отзыв доступа проверены.");
 } finally {await db.end();}

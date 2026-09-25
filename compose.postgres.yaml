@@ -1,0 +1,55 @@
+# Дополнение: docker compose -f compose.yaml -f compose.postgres.yaml up -d --build
+# Использует отдельный том и не переносит/не удаляет данные существующей MySQL.
+services:
+  mysql:
+    profiles: [mysql-disabled]
+  postgres:
+    image: postgres:18-bookworm
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DATABASE:-kontur_work}
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_ADMIN_PASSWORD:?Set POSTGRES_ADMIN_PASSWORD in .env}
+      POSTGRES_APP_USER: ${POSTGRES_USER:-kontur}
+      POSTGRES_APP_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_INITDB_ARGS: --encoding=UTF8
+    volumes:
+      - postgres_data:/var/lib/postgresql
+      - ./deploy/postgres/01-application.sql:/docker-entrypoint-initdb.d/01-application.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$$POSTGRES_USER\" -d \"$$POSTGRES_DB\""]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    networks: [kontur]
+  migrate:
+    depends_on:
+      mysql: !reset null
+      postgres: {condition: service_healthy}
+    environment:
+      DB_ENGINE: postgres
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+  app:
+    depends_on:
+      mysql: !reset null
+      postgres: {condition: service_healthy}
+    environment:
+      DB_ENGINE: postgres
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+  worker:
+    depends_on:
+      mysql: !reset null
+      postgres: {condition: service_healthy}
+    environment:
+      DB_ENGINE: postgres
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+  recording-worker:
+    environment:
+      DB_ENGINE: postgres
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+volumes:
+  postgres_data:

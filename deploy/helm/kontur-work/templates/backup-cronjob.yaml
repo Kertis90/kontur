@@ -38,15 +38,23 @@ spec:
                 sizeLimit: {{ .Values.backup.workSize | quote }}
           initContainers:
             - name: dump
-              image: {{ .Values.backup.mysqlImage | quote }}
+              image: {{ ternary .Values.backup.postgresImage .Values.backup.mysqlImage (eq .Values.database.engine "postgres") | quote }}
               command: ["sh", "-ec"]
               args:
                 - |
                   umask 077
+                  {{- if eq .Values.database.engine "postgres" }}
+                  case "$POSTGRES_DATABASE" in ''|*[!a-zA-Z0-9_]*) exit 2;; esac
+                  export PGPASSWORD="$POSTGRES_PASSWORD"
+                  export PGSSLMODE={{ ternary "verify-full" "disable" .Values.database.ssl.enabled }}
+                  if [ -n "${POSTGRES_SSL_CA:-}" ]; then printf '%s' "$POSTGRES_SSL_CA" > /work/postgres-ca.pem; export PGSSLROOTCERT=/work/postgres-ca.pem; fi
+                  pg_dump --host="$POSTGRES_HOST" --port="$POSTGRES_PORT" --username="$POSTGRES_USER" --no-owner --no-privileges --encoding=UTF8 "$POSTGRES_DATABASE" > /work/database.sql
+                  {{- else }}
                   case "$MYSQL_DATABASE" in ''|*[!a-zA-Z0-9_]*) exit 2;; esac
                   export MYSQL_PWD="$MYSQL_PASSWORD"
                   if [ -n "${MYSQL_SSL_CA:-}" ]; then printf '%s' "$MYSQL_SSL_CA" > /work/mysql-ca.pem; set -- --ssl-ca=/work/mysql-ca.pem; else set --; fi
                   mysqldump "$@" --host="$MYSQL_HOST" --port="$MYSQL_PORT" --user="$MYSQL_USER" --ssl-mode={{ .Values.backup.mysqlSslMode }} --single-transaction --quick --no-tablespaces --set-gtid-purged=OFF --hex-blob --routines --events "$MYSQL_DATABASE" > /work/database.sql
+                  {{- end }}
               envFrom:
                 - configMapRef:
                     name: {{ include "kontur-work.fullname" . }}

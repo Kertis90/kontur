@@ -1,8 +1,10 @@
 import bcrypt from "bcryptjs";
 import mysql from "mysql2/promise";
 import { mysqlSslConfig } from "../src/lib/mysql-config.js";
+import {databaseEngine} from '../src/lib/database-config.js';
+import {createPostgresConnection} from '../src/lib/postgres-db.js';
 
-const db = await mysql.createConnection({
+const db = databaseEngine()==='postgres'?await createPostgresConnection():await mysql.createConnection({
   host: process.env.MYSQL_HOST || "127.0.0.1",
   port: Number(process.env.MYSQL_PORT || 3306),
   user: process.env.MYSQL_USER || "kontur",
@@ -261,6 +263,10 @@ try {
               (1, NULL, 'Стандартные задачи', 'Правило по умолчанию, если более точные условия не совпали', 10080, 80, JSON_ARRAY(), 1000, ?)`,
       [projectId, JSON.stringify([{ field: "priority", operator: "equals", value: "critical" }]), admin.id, admin.id],
     );
+  }
+  // Явные номера начальных записей не должны пересекаться с будущими номерами PostgreSQL.
+  if(databaseEngine()==='postgres')for(const table of ['workspaces','project_groups']) {
+    await db.query(`SELECT setval(pg_get_serial_sequence(?, 'id'), GREATEST((SELECT COALESCE(MAX(id),1) FROM ${table}),(SELECT last_value FROM ${table}_id_seq)))`,[table]);
   }
   await db.commit();
   console.log(`Начальные данные готовы. Администратор: ${adminEmail}`);

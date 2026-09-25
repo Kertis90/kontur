@@ -1,36 +1,34 @@
 import mysql from "mysql2/promise";
-import { mysqlSslConfig } from "./mysql-config.js";
+import { databaseEngine, mysqlConfig } from "./database-config.js";
+import { createPostgresPool } from "./postgres-db.js";
 
 const globalForDb = globalThis;
 
-export const db = globalForDb.__konturDb || mysql.createPool({
-  host: process.env.MYSQL_HOST || "127.0.0.1",
-  port: Number(process.env.MYSQL_PORT || 3306),
-  user: process.env.MYSQL_USER || "kontur",
-  password: process.env.MYSQL_PASSWORD,
-  database: process.env.MYSQL_DATABASE || "kontur_work",
-  charset: "utf8mb4",
+export const db = globalForDb.__konturDb || (databaseEngine()==='postgres' ? createPostgresPool() : mysql.createPool({
+  ...mysqlConfig(),
   connectionLimit: Number(process.env.MYSQL_POOL_SIZE || 12),
   connectTimeout: Number(process.env.MYSQL_CONNECT_TIMEOUT || 10000),
   waitForConnections: true,
   queueLimit: 0,
   dateStrings: true,
   decimalNumbers: true,
-  ssl: mysqlSslConfig(),
-});
+}));
 
 if (process.env.NODE_ENV !== "production") globalForDb.__konturDb = db;
 
+// Возвращает строки или результат изменения независимо от выбранной БД.
 export async function rows(sql, params = []) {
   const [result] = await db.query(sql, params);
   return result;
 }
 
+// Возвращает первую строку результата либо null.
 export async function one(sql, params = []) {
   const result = await rows(sql, params);
   return result[0] || null;
 }
 
+// Выполняет действие атомарно на одном подключении и освобождает его после завершения.
 export async function transaction(work) {
   const connection = await db.getConnection();
   await connection.beginTransaction();
@@ -46,6 +44,7 @@ export async function transaction(work) {
   }
 }
 
+// Читает JSON обоих драйверов, сохраняя значение по умолчанию при повреждённых данных.
 export function parseJson(value, fallback = null) {
   if (value == null) return fallback;
   if (typeof value === "object") return value;

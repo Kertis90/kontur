@@ -1,5 +1,8 @@
 // Задаёт отдельные адреса и реквизиты одноразового стенда, не читая рабочий .env.
 export const browserEnv = {
+  DB_ENGINE: process.env.TEST_DB_ENGINE==='postgres'?'postgres':'mysql',
+  POSTGRES_HOST:'127.0.0.1',POSTGRES_PORT:'13318',POSTGRES_DATABASE:'kontur_browser_test',
+  POSTGRES_USER:'kontur_test',POSTGRES_PASSWORD:'disposable-browser-only',POSTGRES_SSL:'false',
   KONTUR_DISPOSABLE_BROWSER_TEST: '1',
   MYSQL_HOST: '127.0.0.1', MYSQL_PORT: '13316', MYSQL_DATABASE: 'kontur_browser_test',
   MYSQL_USER: 'kontur_test', MYSQL_PASSWORD: 'disposable-browser-only', MYSQL_SSL: 'false',

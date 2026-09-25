@@ -39,5 +39,5 @@ try {
  assert.equal((await call('POST',`/${draft.id}/start-project`,start)).project_id,created.project_id);
  assert.ok((await call('GET',`/board?project_id=${created.project_id}`)).items.some(i=>i.id===future.id));
  await call('POST',`/${draft.id}/items/${future.id}/start`,{revision:1});
- console.log('Планирование MySQL: права, цели, версии, архив, проект-черновик, эпик и задача, одновременный повтор начала — проверены.');
+ console.log((browserEnv.DB_ENGINE==='postgres'?'PostgreSQL: ':'MySQL: ')+"Планирование права, цели, версии, архив, проект-черновик, эпик и задача, одновременный повтор начала — проверены.");
 } finally {await db.end();}

@@ -25,9 +25,10 @@ export async function externalAccount(workspaceId,source,subject,email,name,issu
  else await c.query('UPDATE users SET email=?,display_name=?,external_issuer=COALESCE(external_issuer,?) WHERE id=?',[email,name,issuer,account.id]);
  return {...account,email,display_name:name};};return connection?run(connection):transaction(run);
 }
+// Сверяет членство в группах и удаляет устаревшие связи только в текущем пространстве.
 export async function synchronizeGroups(user,source,externalGroups,connection=null){
  const run=async c=>{const [groups]=await c.query('SELECT id,external_key FROM access_groups WHERE workspace_id=? AND source=? AND active=TRUE',[user.workspace_id,source]);const keys=new Set(externalGroups.map(g=>source==='ldap'?g.toLowerCase():g));const ids=groups.filter(g=>g.external_key&&keys.has(source==='ldap'?g.external_key.toLowerCase():g.external_key)).map(g=>g.id);
- await c.query('DELETE m FROM access_group_members m JOIN access_groups g ON g.id=m.group_id WHERE m.user_id=? AND m.membership_source=? AND g.workspace_id=?',[user.id,source,user.workspace_id]);
+ await c.query('DELETE FROM access_group_members WHERE user_id=? AND membership_source=? AND group_id IN (SELECT id FROM access_groups WHERE workspace_id=?)',[user.id,source,user.workspace_id]);
  for(const id of ids)await c.query('INSERT IGNORE INTO access_group_members(group_id,user_id,membership_source) VALUES(?,?,?)',[id,user.id,source]);return ids;};return connection?run(connection):transaction(async c=>{await c.query('SELECT id FROM users WHERE id=? FOR UPDATE',[user.id]);return run(c);});
 }
 export async function oidcGroupSync(user,claims){const saved=await one('SELECT config_json FROM directory_sync_configs WHERE workspace_id=?',[user.workspace_id]),config=configSchema.parse(parseJson(saved?.config_json,{}));const raw=claims[config.oidc_group_claim];if(raw!==undefined&&!Array.isArray(raw))throw new WorkError(422,'OIDC groups должен быть массивом');await synchronizeGroups(user,'oidc',(raw||[]).filter(v=>typeof v==='string'));}

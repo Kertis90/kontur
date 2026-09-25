@@ -190,7 +190,7 @@ export function buildOpenApiDocument(origin = "https://projects.company.ru") {
     openapi: "3.1.0",
     info: {
       title: "Контур Work API",
-      version: "0.21.0",
+      version: "0.22.0",
       description: "REST API управления проектами, задачами, чатами, конференциями и телефонией. Моменты времени передаются в ISO 8601 UTC, календарные даты — YYYY-MM-DD.",
     },
     servers: [{ url: origin, description: "Текущая установка" }],

@@ -94,7 +94,8 @@ export async function jiraTransferApi(request, path, user) {
         await connection.query('UPDATE jira_transfer_sources SET cursor_value=NULL WHERE id=?', [id]);
       } else if (input.action === 'resolve') {
         if (status !== 'completed' || !input.item_id || !input.choice) throw new WorkError(409, 'Выберите конфликт после завершения прохода');
-        const [[item]] = await connection.query('SELECT i.*,t.version_number FROM jira_transfer_items i LEFT JOIN tasks t ON t.id=i.task_id AND t.project_id=? WHERE i.id=? AND i.source_id=? FOR UPDATE', [current.project_id, input.item_id, id]);
+        // Решение применимо только к существующей задаче; блокируем обе строки без nullable-стороны JOIN.
+        const [[item]] = await connection.query('SELECT i.*,t.version_number FROM jira_transfer_items i JOIN tasks t ON t.id=i.task_id AND t.project_id=? WHERE i.id=? AND i.source_id=? FOR UPDATE', [current.project_id, input.item_id, id]);
         if (item?.status !== 'conflict' || !item.version_number) throw new WorkError(409, 'Задача конфликта недоступна; восстановите её перед повтором');
         await connection.query("UPDATE jira_transfer_items SET status='pending',choice=?,choice_version=? WHERE id=?", [input.choice, item.version_number, item.id]);
         status = 'running'; phase = 'tasks';

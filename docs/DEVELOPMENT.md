@@ -1,5 +1,15 @@
 # Разработка в VS Code
 
+## Выбор БД в 0.22
+
+Приложение поддерживает MySQL 8.4 и PostgreSQL 18. По умолчанию остаётся MySQL;
+порядок настройки второй БД, миграций и копий — в [DATABASES.md](DATABASES.md).
+Для тестового PostgreSQL добавьте `--profile postgres` к Compose стенда и задайте
+`TEST_DB_ENGINE=postgres` (PowerShell: `$env:TEST_DB_ENGINE='postgres'`). Затем
+выполните `npm run test:browser:setup`, `npm run test:integration` и браузерные
+проверки. Для MySQL используйте `TEST_DB_ENGINE=mysql`. CI проверяет оба движка.
+Сверку резервной копии не запускайте одновременно с изменяющими данные тестами.
+
 ## Автоматическая проверка поставки 0.21.0
 
 GitHub Actions выполняет серверные тесты, quality, сборку Node.js 22,

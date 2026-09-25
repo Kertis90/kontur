@@ -25,5 +25,5 @@ try{
  const request={request_id:randomUUID()},replay=await api(agentsApi,'POST',`agents/runs/${run.id}/replay`,request);assert.equal((await api(agentsApi,'POST',`agents/runs/${run.id}/replay`,request)).id,replay.id);await runtime.processAgentRun(replay.id);const second=await one('SELECT * FROM ai_agent_runs WHERE id=?',[replay.id]);assert.equal(second.status,'completed',second.error_text);assert.equal(calls,4);assert.equal(Number((await one('SELECT COUNT(*) AS total FROM tasks WHERE project_id=?',[project.id])).total),before);
  await assert.rejects(()=>runtime.applyAgentRun(owner,replay.id),{status:409});
  const source=debug.context.refs.find(r=>r.kind==='task');await rows('UPDATE tasks SET version_number=version_number+1 WHERE id=?',[source.id]);await assert.rejects(()=>api(agentsApi,'POST',`agents/runs/${run.id}/replay`,{request_id:randomUUID()}),{status:409});
- console.log('Агенты MySQL: версия общей части, общий лимит, входы и токены, шифрование, повтор без записи, идемпотентность и изменение источника — проверены.');
+ console.log((browserEnv.DB_ENGINE==='postgres'?'PostgreSQL: ':'MySQL: ')+"Агенты версия общей части, общий лимит, входы и токены, шифрование, повтор без записи, идемпотентность и изменение источника — проверены.");
 }finally{await db.end();}

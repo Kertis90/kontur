@@ -34,6 +34,7 @@ export async function evaluationContext(user,run,itemId){
  const context=JSON.parse(decryptSecret(item.context_encrypted));await checkAgentRefs(user,run.project_id,context.refs,{versions:true});return context;
 }
 
+// Управляет проверками агентов и атомарно отменяет связанные запуски в выбранной БД.
 export async function agentEvaluationsApi(request,path,user,{getAgent}){
  const agent=await getAgent(user,positiveId.parse(path[1]),'agent.manage');await agentScope(user,'agents:read');
  const method=request.method;
@@ -89,12 +90,13 @@ export async function agentEvaluationsApi(request,path,user,{getAgent}){
    return reply({id:batch.id,name:batch.name,status:batch.status,items:items.map(i=>({id:i.id,case_key:i.case_key,name:parseJson(i.case_json,{}).name,variant:i.variant,status:i.status,run_id:i.run_id,score:parseJson(i.score_json,null),input_tokens:i.input_tokens,output_tokens:i.output_tokens,started_at:i.started_at,completed_at:i.completed_at,error:i.error_text,result:parseJson(i.result_json,null)}))});
   }
   if(method==='POST'&&path[5]==='cancel'){
-   await agentScope(user,'agents:run');await transaction(async c=>{await c.query("UPDATE ai_agent_eval_batches SET status='cancelled',completed_at=CURRENT_TIMESTAMP WHERE id=? AND status='running'",[batch.id]);await c.query("UPDATE ai_agent_runs r JOIN ai_agent_eval_items i ON i.run_id=r.id SET r.status='cancelled',r.completed_at=CURRENT_TIMESTAMP WHERE i.batch_id=? AND r.status IN ('queued','running')",[batch.id]);await c.query("UPDATE ai_agent_eval_items SET status='cancelled' WHERE batch_id=? AND status IN ('pending','queueing','running')",[batch.id]);});return reply({ok:true});
+   await agentScope(user,'agents:run');await transaction(async c=>{await c.query("UPDATE ai_agent_eval_batches SET status='cancelled',completed_at=CURRENT_TIMESTAMP WHERE id=? AND status='running'",[batch.id]);await c.query("UPDATE ai_agent_runs SET status='cancelled',completed_at=CURRENT_TIMESTAMP WHERE EXISTS(SELECT 1 FROM ai_agent_eval_items i WHERE i.run_id=ai_agent_runs.id AND i.batch_id=?) AND status IN ('queued','running')",[batch.id]);await c.query("UPDATE ai_agent_eval_items SET status='cancelled' WHERE batch_id=? AND status IN ('pending','queueing','running')",[batch.id]);});return reply({ok:true});
   }
  }
  throw new WorkError(404,'Метод лаборатории не найден');
 }
 
+// Продолжает проверки агентов и завершает пакет только после обработки всех его примеров.
 export async function pollAgentEvaluations({getAgent,enqueueAgentRun}){
  const work=await rows("SELECT i.*,b.agent_id,b.user_id,b.api_token_id,a.workspace_id FROM ai_agent_eval_items i JOIN ai_agent_eval_batches b ON b.id=i.batch_id JOIN ai_agents a ON a.id=b.agent_id WHERE b.status='running' AND i.status IN ('pending','queueing','running') ORDER BY i.id LIMIT 30");
  for(const item of work)try{
@@ -111,5 +113,5 @@ export async function pollAgentEvaluations({getAgent,enqueueAgentRun}){
   let queued;try{queued=await enqueueAgentRun(actor,{...agent,config},{type:'manual',key:`evaluation:${item.id}`,context:{inputs:test.inputs,task_id:test.task_id,evaluation_item_id:item.id},dryRun:true});}catch(e){if(e.status===409&&e.message==='Очередь агента заполнена')continue;throw e;}
   await rows("UPDATE ai_agent_eval_items SET status='running',run_id=? WHERE id=? AND status='queueing'",[queued.id,item.id]);
  }catch(e){await rows("UPDATE ai_agent_eval_items SET status='failed',error_text=? WHERE id=? AND status IN ('pending','queueing','running')",[e.status?e.message.slice(0,1000):'Ошибка выполнения теста',item.id]);}
- await rows("UPDATE ai_agent_eval_batches b SET b.status='completed',b.completed_at=CURRENT_TIMESTAMP WHERE b.status='running' AND NOT EXISTS(SELECT 1 FROM ai_agent_eval_items i WHERE i.batch_id=b.id AND i.status IN ('pending','queueing','running'))");
+ await rows("UPDATE ai_agent_eval_batches b SET status='completed',completed_at=CURRENT_TIMESTAMP WHERE b.status='running' AND NOT EXISTS(SELECT 1 FROM ai_agent_eval_items i WHERE i.batch_id=b.id AND i.status IN ('pending','queueing','running'))");
 }

@@ -5,6 +5,20 @@ metadata:
   labels:
     {{- include "kontur-work.labels" . | nindent 4 }}
 data:
+  {{- if not (has .Values.database.engine (list "mysql" "postgres")) }}
+  {{- fail "database.engine должен быть mysql или postgres" }}
+  {{- end }}
+  DB_ENGINE: {{ .Values.database.engine | quote }}
+  POSTGRES_HOST: {{ .Values.database.host | quote }}
+  POSTGRES_PORT: {{ .Values.database.port | quote }}
+  POSTGRES_DATABASE: {{ .Values.database.name | quote }}
+  POSTGRES_USER: {{ .Values.database.user | quote }}
+  POSTGRES_POOL_SIZE: {{ .Values.database.poolSize | quote }}
+  POSTGRES_SSL: {{ .Values.database.ssl.enabled | quote }}
+  POSTGRES_SSL_REJECT_UNAUTHORIZED: {{ .Values.database.ssl.rejectUnauthorized | quote }}
+  {{- with .Values.database.ssl.ca }}
+  POSTGRES_SSL_CA: |-{{ . | nindent 4 }}
+  {{- end }}
   NODE_ENV: production
   PORT: {{ .Values.app.port | quote }}
   HOSTNAME: "0.0.0.0"

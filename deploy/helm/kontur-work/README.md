@@ -1,5 +1,10 @@
 # Контур Work в Kubernetes
 
+Начиная с 0.22 выбирайте `database.engine: mysql` или `postgres`. Для PostgreSQL 18
+используйте `values-postgres.example.yaml`, порт 5432 и ключ `POSTGRES_PASSWORD`
+во внешнем Secret. Миграции и CronJob резервирования выбираются автоматически.
+Подробности и ограничения: [выбор БД](../../../docs/DATABASES.md).
+
 Helm chart разворачивает web-приложение, фоновые worker-процессы и распределённый пул LiveKit SFU/TURN. MySQL, Redis и S3 намеренно не создаются внутри chart: для настоящей отказоустойчивости им нужны отдельные HA-кластеры, операторы или managed-сервисы. Один HA Redis используется очередью приложения и координацией media-узлов.
 
 ## Требования

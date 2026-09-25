@@ -1,0 +1,15 @@
+# Отдельный стенд восстановления без опубликованных портов и доступа к рабочей сети.
+services:
+  postgres-restore:
+    image: postgres:18-bookworm
+    environment:
+      POSTGRES_PASSWORD: ${RESTORE_POSTGRES_PASSWORD:?Set RESTORE_POSTGRES_PASSWORD}
+      POSTGRES_DB: ${RESTORE_POSTGRES_DATABASE:-kontur_restore_drill}
+      POSTGRES_USER: ${RESTORE_POSTGRES_USER:-kontur}
+    volumes: [restore_postgres_data:/var/lib/postgresql]
+    networks: [restore]
+volumes:
+  restore_postgres_data:
+networks:
+  restore:
+    internal: true

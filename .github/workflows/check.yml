@@ -13,9 +13,14 @@ jobs:
   application:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        database: [mysql, postgres]
     env:
       NEXT_TELEMETRY_DISABLED: '1'
       BROWSER_PRODUCTION: '1'
+      TEST_DB_ENGINE: ${{ matrix.database }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v6
@@ -29,8 +34,8 @@ jobs:
       - run: npm run quality
       - run: npm run build
       - run: npx playwright install --with-deps chromium
-      - name: Одноразовые MySQL, Redis и файлы
-        run: docker compose -f deploy/tests/browser.compose.yaml --profile files up -d --build --wait
+      - name: Одноразовая БД, Redis и файлы
+        run: docker compose -f deploy/tests/browser.compose.yaml --profile files --profile postgres up -d --build --wait ${{ matrix.database }} redis minio
       - name: Сборка клиента и создание приватного бакета
         run: |
           docker build --target client -t kontur-minio-client:2025-08-13 deploy/storage
@@ -40,23 +45,18 @@ jobs:
             mc anonymous set none check/kontur-browser-test
           '
       - run: npm run test:browser:setup
-      - run: npm run test:plans:mysql
-      - run: npm run test:workspace:mysql
-      - run: npm run test:agent-debug:mysql
-      - run: npm run test:plan-ai:mysql
-      - run: npm run test:jira:mysql
-      - run: npm run test:backup:mysql
+      - run: npm run test:integration
       - run: npm run test:browser
       - uses: actions/upload-artifact@v6
         if: failure()
         with:
-          name: browser-check
+          name: browser-check-${{ matrix.database }}
           path: |
             playwright-report/
             test-results/
           retention-days: 7
       - if: always()
-        run: docker compose -f deploy/tests/browser.compose.yaml --profile files down
+        run: docker compose -f deploy/tests/browser.compose.yaml --profile files --profile postgres down
   migrations:
     runs-on: ubuntu-24.04
     timeout-minutes: 25

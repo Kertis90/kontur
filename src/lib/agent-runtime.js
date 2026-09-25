@@ -1,4 +1,5 @@
 import {evaluationContext,pollAgentEvaluations} from './agent-evaluations.js';
+import {AUTOMATIC_REVIEW_FILTER} from './agent-review-rules.js';
 import {resolveFlowParts,checkExpandedFlow} from './agent-parts.js';
 import {replayContext,saveDebugContext,encodeStepInput} from './agent-debug.js';
 import {loadAgentCheckpoint,pauseAgentAtGate,expireAgentGates} from './agent-checkpoints.js';
@@ -189,11 +190,12 @@ export async function enqueueAgentEvent(event){
   catch(e){if(!e.status)throw e;await rows('UPDATE ai_agents SET last_error=? WHERE id=?',[e.message.slice(0,1000),item.id]);}
  }
 }
+// Продолжает очередь с проверкой сроков согласований и устаревших запусков в выбранной БД.
 export async function pollAgentRuns(){
  await expireAgentGates();
  await pollAgentEvaluations({getAgent,enqueueAgentRun});
  // No automatic provider retry after an uncertain interruption: it could duplicate billing.
- await rows("UPDATE ai_agent_runs r LEFT JOIN ai_agent_run_state s ON s.run_id=r.id SET r.status='failed',r.error_text='Выполнение прервано. Проверьте журнал и запустите вручную.',r.completed_at=CURRENT_TIMESTAMP WHERE r.status='running' AND COALESCE(s.heartbeat_at,r.started_at)<DATE_SUB(CURRENT_TIMESTAMP,INTERVAL 15 MINUTE)");
+ await rows("UPDATE ai_agent_runs SET status='failed',error_text='Выполнение прервано. Проверьте журнал и запустите вручную.',completed_at=CURRENT_TIMESTAMP WHERE status='running' AND COALESCE((SELECT heartbeat_at FROM ai_agent_run_state WHERE run_id=ai_agent_runs.id),started_at)<DATE_SUB(CURRENT_TIMESTAMP,INTERVAL 15 MINUTE)");
  const due=await rows('SELECT * FROM ai_agents WHERE enabled=TRUE AND next_run_at<=CURRENT_TIMESTAMP ORDER BY next_run_at LIMIT 20');
  for(const item of due){const config=agentConfigSchema.parse(parseJson(item.config_json));if(config.trigger.type!=='schedule')continue;
   const next=agentSqlDate(nextAgentSchedule(config.trigger));
@@ -203,6 +205,6 @@ export async function pollAgentRuns(){
  }
  const jobs=await rows("SELECT MIN(r.id) AS id FROM ai_agent_runs r WHERE r.status='queued' AND NOT EXISTS(SELECT 1 FROM ai_agent_runs active WHERE active.agent_id=r.agent_id AND active.status='running') GROUP BY r.agent_id ORDER BY MIN(r.id) LIMIT 2");await Promise.all(jobs.map(job=>processAgentRun(job.id)));
  // Resume only the transactional application of an already saved answer after a worker restart.
- const reviews=await rows("SELECT * FROM ai_agent_runs WHERE status='review' AND JSON_UNQUOTE(JSON_EXTRACT(config_json,'$.mode'))='automatic' AND COALESCE(JSON_EXTRACT(source_meta_json,'$.review_required'),FALSE)=FALSE AND COALESCE(JSON_EXTRACT(source_meta_json,'$.dry_run'),FALSE)=FALSE AND (JSON_EXTRACT(source_meta_json,'$.waiting_gate') IS NULL OR JSON_TYPE(JSON_EXTRACT(source_meta_json,'$.waiting_gate'))='NULL') ORDER BY id LIMIT 5");
+ const reviews=await rows(`SELECT * FROM ai_agent_runs WHERE status='review' AND JSON_UNQUOTE(JSON_EXTRACT(config_json,'$.mode'))='automatic' AND ${AUTOMATIC_REVIEW_FILTER} AND (JSON_EXTRACT(source_meta_json,'$.waiting_gate') IS NULL OR JSON_TYPE(JSON_EXTRACT(source_meta_json,'$.waiting_gate'))='NULL') ORDER BY id LIMIT 5`);
  for(const run of reviews)try{await applyAgentRun(await agentActor(run.actor_id,run.workspace_id,run.api_token_id),run.id,{automatic:true});}catch(e){await rows("UPDATE ai_agent_runs SET status='failed',error_text=?,completed_at=CURRENT_TIMESTAMP WHERE id=? AND status='review'",[e.status?e.message.slice(0,1000):'Не удалось применить действия агента',run.id]);}
 }

@@ -57,6 +57,7 @@ export async function removeProjectAccess(user, projectId, type, principalId, re
   return send({ ok: true });
 }
 
+// Обновляет проект и переносит задачи на соответствующие этапы выбранного процесса.
 export async function updateProject(user, projectId, input, request) {
   const { project, permissions } = await projectAccess(user, projectId, "project.edit");
   const date = z.string().date().nullable().optional();
@@ -75,7 +76,7 @@ export async function updateProject(user, projectId, input, request) {
       const [missing] = await connection.query(`SELECT DISTINCT old.code FROM tasks task JOIN workflow_stages old ON old.id=task.stage_id
         LEFT JOIN workflow_stages next ON next.workflow_id=? AND next.code=old.code WHERE task.project_id=? AND next.id IS NULL`, [data.workflow_id, projectId]);
       if (missing.length) throw new ProjectAccessError(422, "В новом процессе отсутствуют этапы существующих задач: " + missing.map((stage) => stage.code).join(", "));
-      await connection.query("UPDATE tasks task JOIN workflow_stages old ON old.id=task.stage_id JOIN workflow_stages next ON next.workflow_id=? AND next.code=old.code SET task.stage_id=next.id WHERE task.project_id=?", [data.workflow_id, projectId]);
+      await connection.query("UPDATE tasks SET stage_id=(SELECT next.id FROM workflow_stages old JOIN workflow_stages next ON next.workflow_id=? AND next.code=old.code WHERE old.id=tasks.stage_id) WHERE project_id=?", [data.workflow_id, projectId]);
     }
     const keys = Object.keys(data);
     if (keys.length) await connection.query(`UPDATE projects SET ${keys.map((key) => `${key}=?`).join(",")} WHERE id=? AND workspace_id=?`, [...keys.map((key) => data[key]), projectId, user.workspace_id]);
