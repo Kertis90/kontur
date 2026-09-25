@@ -1,6 +1,6 @@
 {
   "name": "kontur-work",
-  "version": "0.22.1",
+  "version": "0.23.0",
   "private": true,
   "type": "module",
   "engines": {
@@ -33,7 +33,8 @@
     "test:plan-ai:mysql": "node --experimental-vm-modules scripts/plan-assistant-mysql-check.mjs",
     "test:database": "node scripts/database-engine-check.mjs",
     "test:backup:postgres": "node scripts/backup-postgres-check.mjs",
-    "test:integration": "node scripts/database-integration-check.mjs"
+    "test:integration": "node scripts/database-integration-check.mjs",
+    "test:tribes": "node --experimental-vm-modules scripts/tribes-integration-check.mjs"
   },
   "dependencies": {
     "bcryptjs": "^3.0.2",

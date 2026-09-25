@@ -15,6 +15,7 @@ const requestUsers = new WeakMap();
 import { handleRecordingApi } from "../../../src/lib/recording-api.js";
 import { RecordingError } from "../../../src/lib/recordings.js";
 import { handleProjectAccessApi, ProjectAccessError } from "../../../src/lib/project-access.js";
+import {requireProjectTribe} from '../../../src/lib/tribe-policy.js';
 import { handleAiApi } from "../../../src/lib/ai-api.js";
 import { AiError } from "../../../src/lib/ai-client.js";
 import crypto from "node:crypto";
@@ -100,6 +101,7 @@ class ApiError extends Error {
 
 const id = z.coerce.number().int().positive();
 const projectSchema = z.object({
+  tribe_id: id.nullable().optional(),
   name: z.string().trim().min(2).max(180),
   key_code: z
     .string()
@@ -2489,8 +2491,9 @@ async function handlePost(request, path) {
   }
 
   if (path[0] === "projects" && path.length === 1) {
-    await requireWorkspacePermission(user, "project.create");
     const data = projectSchema.parse(await input(request));
+    if(!data.tribe_id)await requireWorkspacePermission(user, "project.create");
+    await requireProjectTribe(user,data.tribe_id);
     const template = data.template_id
       ? await one(
           "SELECT * FROM project_templates WHERE id=? AND workspace_id=? AND active=TRUE",
@@ -2525,9 +2528,11 @@ async function handlePost(request, path) {
         ? JSON.parse(template.default_tasks_json || "[]")
         : template?.default_tasks_json || [];
     const result = await transaction(async (connection) => {
+      if(data.tribe_id)await connection.query('SELECT id FROM tribes WHERE id=? FOR UPDATE',[data.tribe_id]);
+      await requireProjectTribe(user,data.tribe_id,connection);
       const [insert] = await connection.query(
-        `INSERT INTO projects (workspace_id, group_id, workflow_id, issue_type_scheme_id, permission_scheme_id, key_code, name, description, color, start_date, target_date, created_by)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO projects (workspace_id, group_id, workflow_id, issue_type_scheme_id, permission_scheme_id, key_code, name, description, color, start_date, target_date, created_by, owner_id, tribe_id, access_mode)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'members')`,
         [
           user.workspace_id,
           groupId,
@@ -2541,6 +2546,8 @@ async function handlePost(request, path) {
           startDate,
           targetDate,
           user.id,
+          user.id,
+          data.tribe_id||null,
         ],
       );
       await connection.query(
@@ -2770,7 +2777,7 @@ async function handlePost(request, path) {
         email: z.string().trim().email().max(254),
         display_name: z.string().trim().min(2).max(160),
         global_role: z
-          .enum(["admin", "project_manager", "member", "viewer"])
+          .enum(["admin", "project_manager", "tribe_leader", "member", "viewer"])
           .default("member"),
         password: z.string().min(10).max(500),
       })
@@ -4368,7 +4375,7 @@ async function handlePatch(request, path) {
     const data = z
       .object({
         global_role: z
-          .enum(["owner", "admin", "project_manager", "member", "viewer"])
+          .enum(["owner", "admin", "project_manager", "tribe_leader", "member", "viewer"])
           .optional(),
         status: z.enum(["active", "invited", "blocked"]).optional(),
         display_name: z.string().trim().min(2).max(160).optional(),
@@ -4492,13 +4499,14 @@ async function handlePatch(request, path) {
           [...values, groupId],
         );
       if (uniqueMembers) {
+        // Сохраняет сроки и источник существующего членства; удаляет только снятые прямые назначения.
         await connection.query(
-          "DELETE FROM access_group_members WHERE group_id=? AND membership_source='direct'",
-          [groupId],
+          `DELETE FROM access_group_members WHERE group_id=? AND membership_source='direct'${uniqueMembers.length?` AND user_id NOT IN (${uniqueMembers.map(()=>'?').join(',')})`:''}`,
+          [groupId,...uniqueMembers],
         );
         for (const userId of uniqueMembers)
           await connection.query(
-            "INSERT INTO access_group_members (group_id, user_id, membership_source) VALUES (?, ?, 'direct') ON DUPLICATE KEY UPDATE membership_source=VALUES(membership_source)",
+            "INSERT IGNORE INTO access_group_members (group_id, user_id, membership_source) VALUES (?, ?, 'direct')",
             [groupId, userId],
           );
       }

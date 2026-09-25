@@ -1,6 +1,6 @@
 image:
   repository: registry.example.ru/kontur-work
-  tag: "0.22.1"
+  tag: "0.23.0"
   pullPolicy: IfNotPresent
 
 imagePullSecrets: []

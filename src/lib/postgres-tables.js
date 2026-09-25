@@ -2361,7 +2361,11 @@ export const postgresTables = {
    "created_by",
    "created_at",
    "updated_at",
-   "deleted_at"
+   "deleted_at",
+   "tribe_id",
+   "owner_id",
+   "access_mode",
+   "access_revision"
   ],
   "identity": "id",
   "keys": [
@@ -3746,6 +3750,48 @@ export const postgresTables = {
    ],
    [
     "slug"
+   ]
+  ]
+ },
+ "tribes": {
+  "columns": [
+   "id",
+   "workspace_id",
+   "leader_id",
+   "name",
+   "description",
+   "color",
+   "revision",
+   "created_by",
+   "created_at",
+   "updated_at"
+  ],
+  "identity": "id",
+  "keys": [
+   [
+    "id"
+   ],
+   [
+    "workspace_id",
+    "name"
+   ]
+  ]
+ },
+ "tribe_members": {
+  "columns": [
+   "tribe_id",
+   "user_id",
+   "can_manage_space",
+   "can_manage_members",
+   "can_create_projects",
+   "can_manage_projects",
+   "created_at"
+  ],
+  "identity": null,
+  "keys": [
+   [
+    "tribe_id",
+    "user_id"
    ]
   ]
  }

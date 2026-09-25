@@ -2,22 +2,26 @@
 # публичные адреса, поэтому обычная сборка работает как раньше.
 ARG NPM_REGISTRY=https://registry.npmjs.org/
 ARG ALPINE_MIRROR=https://dl-cdn.alpinelinux.org/alpine
+ARG NODE_IMAGE=node:22-alpine
+ARG NODEJS_DIST_URL=https://nodejs.org/dist
 
-FROM node:22-alpine AS dependencies
+FROM ${NODE_IMAGE} AS dependencies
 ARG NPM_REGISTRY
-ENV npm_config_registry=${NPM_REGISTRY}
+ARG NODEJS_DIST_URL
+# npm берёт пакеты из реестра, а сборка нативных модулей — заголовки Node.js из disturl.
+ENV npm_config_registry=${NPM_REGISTRY} npm_config_disturl=${NODEJS_DIST_URL}
 WORKDIR /app
 COPY package.json package-lock.json ./
 RUN npm ci --no-audit --no-fund
 
-FROM node:22-alpine AS builder
+FROM ${NODE_IMAGE} AS builder
 WORKDIR /app
 ENV NEXT_TELEMETRY_DISABLED=1
 COPY --from=dependencies /app/node_modules ./node_modules
 COPY . .
 RUN npm run build
 
-FROM node:22-alpine AS runner
+FROM ${NODE_IMAGE} AS runner
 ARG ALPINE_MIRROR
 WORKDIR /app
 ENV NODE_ENV=production \

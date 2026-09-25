@@ -7,6 +7,8 @@ x-kontur-image: &kontur-image
     args:
       NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmjs.org/}
       ALPINE_MIRROR: ${ALPINE_MIRROR:-https://dl-cdn.alpinelinux.org/alpine}
+      NODE_IMAGE: ${NODE_IMAGE:-node:22-alpine}
+      NODEJS_DIST_URL: ${NODEJS_DIST_URL:-https://nodejs.org/dist}
 
 # Необязательные зеркала для сборки хранилища. Аргументы без значения не передаются
 # в сборку, пока соответствующая переменная не задана, и Dockerfile берёт свой
@@ -17,6 +19,8 @@ x-storage-build-args: &storage-build-args
   DEBIAN_SECURITY_MIRROR: ${DEBIAN_SECURITY_MIRROR:-http://deb.debian.org/debian-security}
   GO_PROXY: ${GO_PROXY:-https://proxy.golang.org,direct}
   GO_SUMDB: ${GO_SUMDB:-sum.golang.org}
+  GO_IMAGE: ${GO_IMAGE:-golang:1.24.13-bookworm}
+  DEBIAN_IMAGE: ${DEBIAN_IMAGE:-debian:bookworm-slim}
   MINIO_SOURCE_URL:
   MC_SOURCE_URL:
   MINIO_SOURCE_SHA256:

@@ -59,6 +59,8 @@ docker compose build minio minio-init
 | `MINIO_SOURCE_URL`, `MC_SOURCE_URL`, `MINIO_SOURCE_SHA256`, `MC_SOURCE_SHA256` | полные адреса, если архивы выложены под своими именами |
 
 Для образа приложения отдельно задаются `NPM_REGISTRY` и `ALPINE_MIRROR`.
+Полный список, включая Node.js и базовые образы, — в
+[руководстве по источникам сборки](../../docs/BUILD-SOURCES.md).
 
 Зеркало Debian указывайте по `http`. Стадия `runtime` сама устанавливает
 `ca-certificates`, и до этого момента в образе нет корневых сертификатов: адрес

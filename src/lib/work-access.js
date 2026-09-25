@@ -3,6 +3,7 @@ import { rows, one, parseJson, transaction } from './db.js';
 import { WorkError, projectFor, positiveId, reply, body, workspaceFor, validUsers } from './work-common.js';
 import { projectPermissionSet, PROJECT_MEMBERSHIP_DEFAULTS } from './permissions.js';
 import { audit } from './audit.js';
+import {tribeAccess} from './tribe-policy.js';
 
 export async function fieldAccess(user,projectId){
   const policies=await rows('SELECT * FROM task_field_access WHERE project_id=?',[projectId]);
@@ -53,6 +54,7 @@ export async function sanitizeWorkResponse(user,value){
   }
   return walk(value);
 }
+// Объясняет действующий доступ и управляет правилами полей и запросами доступа.
 export async function accessApi(request,path,user){
   const method=request.method,url=new URL(request.url);
   if(path[0]==='access-directory'&&method==='GET'){
@@ -62,6 +64,9 @@ export async function accessApi(request,path,user){
   if(path[0]==='access-explain'&&method==='GET'){
     const project=await projectFor(user,path[1]);
     const sources=[];
+    if(Number(project.owner_id)===Number(user.id))sources.push('Вы — владелец проекта');
+    const tribe=project.tribe_id?await tribeAccess(user,project.tribe_id):null;
+    if(tribe)sources.push(`Трайб «${tribe.name}»: ${tribe.is_leader?'лидер':tribe.can_manage_projects?'управление всеми проектами':'участник'}`);
     const member=await one('SELECT project_role FROM project_members WHERE project_id=? AND user_id=?',[project.id,user.id]);if(member)sources.push(`Прямое участие в проекте: ${member.project_role}`);
     const groups=await rows(`WITH RECURSIVE mine AS (
       SELECT g.id,g.parent_group_id,CAST(g.id AS CHAR(2000)) AS path FROM access_groups g JOIN access_group_members m ON m.group_id=g.id WHERE m.user_id=? AND g.workspace_id=? AND g.active=TRUE AND (m.expires_at IS NULL OR m.expires_at>CURRENT_TIMESTAMP)
@@ -71,7 +76,8 @@ export async function accessApi(request,path,user){
     const temporary=await rows("SELECT id,project_role,expires_at FROM project_access_requests WHERE project_id=? AND user_id=? AND status='approved' AND expires_at>CURRENT_TIMESTAMP",[project.id,user.id]);for(const t of temporary)sources.push(`Временный доступ по запросу №${t.id}: ${t.project_role}, до ${t.expires_at}`);
     const assignments=await rows(`SELECT DISTINCT r.name,a.principal_type,a.principal_id FROM access_assignments a JOIN access_roles r ON r.id=a.role_id WHERE r.workspace_id=? AND r.scope='project' AND r.active=TRUE AND (a.valid_from IS NULL OR a.valid_from<=CURRENT_TIMESTAMP) AND (a.expires_at IS NULL OR a.expires_at>CURRENT_TIMESTAMP) AND ((a.principal_type='user' AND a.principal_id=?) ${groups.length?`OR (a.principal_type='group' AND a.principal_id IN (${groups.map(()=>'?')}))`:''}) AND (a.scope_type='workspace' OR (a.scope_type='project' AND a.scope_id=?) OR (a.scope_type='project_group' AND a.scope_id=?))`,[user.workspace_id,user.id,...groups.map(g=>g.id),project.id,project.group_id||0]);
     for(const a of assignments)sources.push(`Функциональная роль «${a.name}»${a.principal_type==='group'?` через группу «${groups.find(g=>g.id===a.principal_id)?.name||a.principal_id}»`:''}`);
-    sources.push('Дополнительно применяются глобальная роль и схема разрешений проекта');
+    sources.push(project.access_mode==='members'?'Проект закрыт: действуют личные и групповые назначения проекта, владелец и руководство трайба. Общая схема компании не открывает доступ.':'Сохранена прежняя схема разрешений проекта и глобальная роль');
+    sources.push('Явные запреты учитываются после разрешений; системные администраторы сохраняют доступ');
     return reply({global_role:user.global_role,sources,permissions:[...await projectPermissionSet(user,project)]});
   }
   if(path[0]==='field-access'){

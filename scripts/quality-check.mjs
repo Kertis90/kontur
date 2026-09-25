@@ -19,7 +19,7 @@ function stripCssLiterals(source) {
     .replace(/"(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*'/g, "");
 }
 
-const cssFiles = ["app/globals.css", "app/advanced.css", "app/polish.css", "app/ai-tools.css", "app/workbench.css", "app/brand.css", "app/workspace.css", "app/agents.css", "app/studio.css"];
+const cssFiles = ["app/globals.css", "app/advanced.css", "app/polish.css", "app/ai-tools.css", "app/workbench.css", "app/brand.css", "app/workspace.css", "app/agents.css", "app/studio.css", "app/tribes.css"];
 let cssRuleCount = 0;
 
 for (const file of cssFiles) {

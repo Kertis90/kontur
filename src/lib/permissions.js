@@ -1,7 +1,9 @@
 import {identityProjectPermissions,identityWorkspacePermissions} from './agent-identity-policy.js';
 import { one, rows } from "./db.js";
+import {tribeAccess} from './tribe-policy.js';
 
 export const PERMISSION_CATALOG = [
+  { key: "tribe.create", name: "Создание пространства трайба", category: "Компания", scope: "workspace" },
   { key: "planning.create", name: "Создание проектов-черновиков", category: "Планирование", scope: "workspace" },
   { key: "planning.view", name: "Просмотр запланированных эпиков и задач", category: "Планирование", scope: "project" },
   { key: "planning.manage", name: "Изменение планов и начало работы", category: "Планирование", scope: "project" },
@@ -91,6 +93,7 @@ const PROJECT_KEYS = PERMISSION_CATALOG.filter((item) => item.scope === "project
 
 const WORKSPACE_ROLE_DEFAULTS = {
   admin: WORKSPACE_KEYS,
+  tribe_leader: ["tribe.create", "planning.create", "knowledge.view", "chat.room.create", "chat.room.join"],
   project_manager: ["chat.room.create", "chat.room.join", "capacity.view", "capacity.manage", "portfolio.manage", "ai.search", "project.create", "project.group.manage", "project.template.manage", "knowledge.view"],
   member: ["knowledge.view", "chat.room.create", "chat.room.join"],
   viewer: ["knowledge.view", "chat.room.join"],
@@ -102,6 +105,7 @@ export const PROJECT_MEMBERSHIP_DEFAULTS = {
   viewer: ["project.browse", "report.view", "chat.use", "conference.join", "telephony.view"],
 };
 
+// Собирает действующие назначения и сохраняет область каждого права для закрытых проектов.
 async function assignmentDecisions(user, roleScope, project = null) {
   const projectId = project?.id || null;
   const projectGroupId = project?.group_id || null;
@@ -116,7 +120,7 @@ async function assignmentDecisions(user, roleScope, project = null) {
        FROM access_groups parent JOIN user_groups ON parent.id=user_groups.parent_group_id
        WHERE parent.active=TRUE AND FIND_IN_SET(parent.id, user_groups.path)=0
      )
-     SELECT DISTINCT permission.permission_key, permission.effect
+     SELECT DISTINCT permission.permission_key, permission.effect, assignment.scope_type
      FROM access_assignments assignment
      JOIN access_roles role ON role.id=assignment.role_id AND role.active=TRUE
      JOIN access_role_permissions permission ON permission.role_id=role.id
@@ -152,25 +156,31 @@ export async function workspacePermissionSet(user) {
   return result;
 }
 
+// Вычисляет текущие права с учётом владельца, трайба, личных назначений, групп и запретов.
 export async function projectPermissionSet(user, projectOrId, taskContext = null, allowDeleted = false) {
   if (!user) return new Set();
-  const project = typeof projectOrId === "object"
+  let project = typeof projectOrId === "object"
     ? projectOrId
-    : await one("SELECT id, workspace_id, group_id, permission_scheme_id, deleted_at FROM projects WHERE id=? AND workspace_id=?", [projectOrId, user.workspace_id]);
+    : await one("SELECT id, workspace_id, group_id, permission_scheme_id, deleted_at, owner_id, access_mode, tribe_id FROM projects WHERE id=? AND workspace_id=?", [projectOrId, user.workspace_id]);
+  if(project&&typeof projectOrId==='object'&&!Object.hasOwn(project,'access_mode'))project=await one('SELECT * FROM projects WHERE id=? AND workspace_id=?',[project.id,user.workspace_id]);
   if (!project || Number(project.workspace_id) !== Number(user.workspace_id)) return new Set();
   if (project.deleted_at && !allowDeleted) return new Set();
   if (user.is_service) return identityProjectPermissions(user,project.id);
   if (["owner", "admin"].includes(user.global_role)) return new Set(PROJECT_KEYS);
 
+  const tribe=project.tribe_id?await tribeAccess(user,project.tribe_id):null;
+  if(project.tribe_id&&!tribe)return new Set();
+  const closed=project.access_mode==='members';
+
   const membership = await one("SELECT project_role FROM project_members WHERE project_id=? AND user_id=?", [project.id, user.id]);
   const permissionSet = new Set();
-  if (user.global_role === "project_manager") for (const key of PROJECT_KEYS) permissionSet.add(key);
+  if ((!closed&&user.global_role === "project_manager")||Number(project.owner_id)===Number(user.id)||tribe?.can_manage_projects) for (const key of PROJECT_KEYS) permissionSet.add(key);
   if (membership) for (const key of PROJECT_MEMBERSHIP_DEFAULTS[membership.project_role] || []) permissionSet.add(key);
 
   const temporaryAccess = await rows("SELECT project_role FROM project_access_requests WHERE project_id=? AND user_id=? AND status='approved' AND expires_at>CURRENT_TIMESTAMP", [project.id,user.id]);
   for (const grant of temporaryAccess) for (const key of PROJECT_MEMBERSHIP_DEFAULTS[grant.project_role] || []) permissionSet.add(key);
 
-  const grants = await rows(
+  const grants = closed?[]:await rows(
     `SELECT grant_row.permission_key, grant_row.principal_type, grant_row.principal_value
      FROM permission_schemes scheme
      JOIN permission_grants grant_row ON grant_row.scheme_id=scheme.id
@@ -208,7 +218,7 @@ export async function projectPermissionSet(user, projectOrId, taskContext = null
     if (allowed) permissionSet.add(permission);
   }
 
-  const decisions = await assignmentDecisions(user, "project", project);
+  const decisions = (await assignmentDecisions(user, "project", project)).filter(item=>!closed||item.effect==='deny'||item.scope_type==='project');
   if (groupRows.length) {
     const groupAccess = await rows(`SELECT project_role FROM project_group_access WHERE project_id=? AND group_id IN (${groupRows.map(() => "?").join(",")})`, [project.id, ...groupRows.map((group) => group.id)]);
     for (const access of groupAccess)

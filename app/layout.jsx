@@ -6,6 +6,7 @@ import "./brand.css";
 import "./workspace.css";
 import "./agents.css";
 import "./studio.css";
+import "./tribes.css";
 
 export const metadata = {
   title: "Контур — управление проектами",

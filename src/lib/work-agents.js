@@ -6,6 +6,7 @@ import {decideAgentGate} from './agent-checkpoints.js';
 import {agentLifecycleApi,readAgentDraft} from './agent-lifecycle.js';
 import {agentIdentityApi,identityActor} from './agent-identities.js';
 import {z} from 'zod';
+import {pendingAgentApprovals} from './agent-approvals.js';
 import {one,rows,transaction,parseJson} from './db.js';
 import {body,reply,positiveId,WorkError} from './work-common.js';
 import {agentSchema,agentConfigSchema} from './agent-schema.js';
@@ -49,6 +50,7 @@ async function runFor(user,id){const run=await one('SELECT * FROM ai_agent_runs 
 // Обрабатывает настройки и историю агентов, включая разбор входов и безопасный повтор запуска.
 export async function agentsApi(request,path,user){
  const method=request.method,params=new URL(request.url).searchParams;
+ if(path[1]==='approvals'&&path.length===2&&method==='GET')return reply(await pendingAgentApprovals(user));
  if(path[1]==='parts')return agentPartsApi(request,path,user);
  if(path[1]==='design'&&method==='POST')return designAgent(request,user);
  if(path[2]==='evaluations')return agentEvaluationsApi(request,path,user,{getAgent});

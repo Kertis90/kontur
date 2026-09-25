@@ -17,6 +17,9 @@ import SecurityWorkbench, {DirectorySettings,AccessPreview} from "../src/compone
 
 import { useEffect, useMemo, useState, useRef } from "react";
 import { ApiAccessAdmin, ApiTokensView, AuditAdmin, AutomationAdmin, BacklogView, DashboardStudio, ImportAdmin, IntegrationsAdmin, KnowledgeView, NotificationCenter, PermissionsAdmin, PortfolioDashboard, ProjectTemplatesAdmin, ReleasesView, ReportsView, SearchView, SlaAdmin, TaskActivity } from "../src/components/AdvancedViews";
+import TribesView from "../src/components/TribesView.jsx";
+import AgentApprovals from "../src/components/AgentApprovals.jsx";
+import {tribeViewData} from "../src/lib/tribe-view-data.js";
 import { ProjectActions, ProjectArchive } from "../src/components/ProjectTools.jsx";
 import { AiSettings } from "../src/components/AiTools";
 import WorkHub from "../src/components/WorkHub.jsx";
@@ -28,13 +31,14 @@ import { TaskDevelopment } from "../src/components/WorkDataTools.jsx";
 import { rememberOffline, clearOffline } from "../src/lib/offline-store.js";
 import CommunicationsView from "../src/components/CommunicationsView";
 
-const ROLE_LABELS = { owner: "Владелец", admin: "Администратор", project_manager: "Руководитель проектов", member: "Участник", viewer: "Наблюдатель" };
+const ROLE_LABELS = { tribe_leader: "Трайб-лидер", owner: "Владелец", admin: "Администратор", project_manager: "Руководитель проектов", member: "Участник", viewer: "Наблюдатель" };
 const PRIORITY_LABELS = { critical: "Критический", high: "Высокий", medium: "Средний", low: "Низкий" };
 const FIELD_LABELS = { text: "Текст", number: "Число", date: "Дата", select: "Список", multiselect: "Множественный список", boolean: "Да/нет", user: "Пользователь", url: "Ссылка" };
 const NAV = [
   ["start", "Начать работу", "check"],
   ["dashboard", "Обзор", "dashboard"],
   ["dashboards", "Мои дашборды", "fields"],
+  ["tribes", "Трайбы", "users"],
   ["projects", "Проекты", "folder"],
   ["backlog", "Бэклог и спринты", "backlog"],
   ["board", "Канбан", "board"],
@@ -50,6 +54,7 @@ const NAV = [
   ["objectives", "Цели и OKR", "reports"],
   ["integrations", "Интеграции", "link"],
   ["agents", "ИИ-агенты", "workflow"],
+  ["agent-approvals", "Согласования ИИ", "check"],
   ["api", "Мой API", "link"],
   ["admin", "Администрирование", "settings"],
 ];
@@ -123,8 +128,14 @@ function avatar(name, color, size = "normal") {
 
 // Управляет рабочими разделами и настройкой организации; часы обновляются независимым компонентом.
 // Показывает рабочие разделы, общую навигацию и быстрый доступ к проектам.
+// Размещает выбор трайба в боковой панели на компьютере и над разделом на телефоне.
+function TribeSwitch({data,value,onChange,mobile=false}){return <label className={`tribe-switch ${mobile?"mobile-tribe-switch":"desktop-tribe-switch"}`}><span>{data.workspace.name}</span><select aria-label="Пространство трайба" value={value||""} onChange={event=>onChange(event.target.value?Number(event.target.value):null)}><option value="">Все мои пространства</option>{(data.tribes||[]).map(tribe=><option key={tribe.id} value={tribe.id}>{tribe.name}</option>)}</select></label>;}
+
+// Объединяет навигацию, доступные данные компании и выбранное пространство сотрудника.
 export default function Home() {
-  const [data, setData] = useState(null);
+  const [companyData, setData] = useState(null);
+  const [tribeId,setTribeId]=useState(undefined);
+  const data=tribeViewData(companyData,tribeId);
   const [lastUndo,setLastUndo]=useState(null),[undoBusy,setUndoBusy]=useState(false),changeBusy=useRef(false);
   const linkedTaskOpened = useRef(false);
   const [authRequired, setAuthRequired] = useState(false);
@@ -148,6 +159,8 @@ export default function Home() {
     try {
       const result = await api("/api/bootstrap");
       setData(result);
+      setTribeId(current=>current===undefined?(result.user.global_role==='tribe_leader'?result.tribes?.[0]?.id||null:null):current&&result.tribes?.some(tribe=>tribe.id===current)?current:null);
+      if(!silent&&!result.projects.length)setView('tribes');
       rememberOffline(result).catch(() => {});
       const linkedTask = Number(new URLSearchParams(window.location.search).get("task"));
       if (linkedTask && !linkedTaskOpened.current) { linkedTaskOpened.current = true; setTaskDraft(result.tasks.find(task => task.id === linkedTask) || null); }
@@ -235,6 +248,7 @@ export default function Home() {
   return <div className="shell has-companion">
     <aside className="sidebar">
       <div className="brand"><div className="brand-mark"><Icon name="logo" size={22}/></div><div><strong>Контур</strong><small>Управление работой</small></div></div>
+      <TribeSwitch data={companyData} value={tribeId} onChange={id=>{setTribeId(id);setProjectId(null);}}/>
       <div className="sidebar-body">
       <div className="sidebar-section-label">Рабочее пространство</div>
       <nav>{visibleNavigation.map(([key, label, icon]) => <button key={key} className={view === key ? "active" : ""} onClick={() => setView(key)}><Icon name={icon}/><span>{label}</span></button>)}</nav>
@@ -245,7 +259,7 @@ export default function Home() {
 
     <main className="main">
       <header className="topbar">
-        <div className="breadcrumbs"><button onClick={() => setView("dashboard")}>{data.workspace.name}</button><Icon name="chevron" size={13}/><button className="current" onClick={() => view === "admin" ? setView("dashboard") : setView(view)}>{NAV.find(([key]) => key === view)?.[1] || project?.name}</button></div>
+        <div className="breadcrumbs"><button onClick={() => setView("tribes")}>{data.workspace.name}</button>{data.currentTribe&&<><Icon name="chevron" size={13}/><button onClick={()=>setView("tribes")}>{data.currentTribe.name}</button></>}<Icon name="chevron" size={13}/><button className="current" onClick={() => view === "admin" ? setView("dashboard") : setView(view)}>{NAV.find(([key]) => key === view)?.[1] || project?.name}</button></div>
         <label className="global-search"><Icon name="search" size={17}/><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Найти задачу…"/></label>
         <CommandPalette data={data} navigation={visibleNavigation} onNavigate={setView} onTask={setTaskDraft} onCreate={project && projectPermissions["task.create"]?()=>openNewTask():null}/>
         <WorkspaceClock/>
@@ -256,8 +270,11 @@ export default function Home() {
       </header>
 
       <div className="content">
+        <TribeSwitch mobile data={companyData} value={tribeId} onChange={id=>{setTribeId(id);setProjectId(null);}}/>
         {view === "start" && <GettingStarted data={data} notify={notify} reload={() => load(true)} onNewProject={() => setProjectDraft({template_id: null, name: "", key_code: "", description: "", group_id: data.groups[0]?.id || null, workflow_id: data.workflows[0]?.id, color: "#e30611", start_date: dateOffset(0), target_date: dateOffset(30)})} onNewTask={project && projectPermissions["task.create"] ? () => openNewTask() : null}/>}
         <UndoBanner action={lastUndo} busy={undoBusy} onUndo={undoTaskChange} onDismiss={()=>setLastUndo(null)}/>
+        {(view === "tribes" || (view === "dashboard" && !project)) && <TribesView data={companyData} selectedId={tribeId} onSelect={id=>{setTribeId(id);setProjectId(null);}} reload={()=>load(true)} notify={notify} onProject={id=>{setProjectId(id);setView("board");}} onNewProject={id=>setProjectDraft({tribe_id:id,template_id:null,name:"",key_code:"",description:"",group_id:null,workflow_id:data.workflows[0]?.id,color:"#e30611",start_date:dateOffset(0),target_date:dateOffset(30)})}/>}
+        {view === "agent-approvals" && <AgentApprovals data={companyData} notify={notify}/>}
         {view === "agents" && <AgentsView data={data} notify={notify}/>}
         {view === "quality" && <QualityView data={data} notify={notify} onTask={setTaskDraft}/>}
         {view === "objectives" && <ObjectivesView data={data} notify={notify}/>}
@@ -274,7 +291,7 @@ export default function Home() {
           onNewGroup={() => setGroupDraft({ name: "", description: "", color: "#2EA879" })}
         />}
         {view === "backlog" && project && <BacklogView data={data} project={project} tasks={tasks} onOpen={setTaskDraft} reload={() => load(true)} notify={notify}/>}
-        {view === "board" && project && <BoardView query={query} project={project} workflow={workflow} tasks={tasks} data={data} onOpen={setTaskDraft} onNew={openNewTask} onMoved={(taskId,stageId)=>applyTaskChange(data.tasks.find(t=>t.id===taskId),{stage_id:stageId})}/>}
+        {view === "board" && project && <BoardView onChanged={()=>load(true)} query={query} project={project} workflow={workflow} tasks={tasks} data={data} onOpen={setTaskDraft} onNew={openNewTask} onMoved={(taskId,stageId)=>applyTaskChange(data.tasks.find(t=>t.id===taskId),{stage_id:stageId})}/>}
         {view === "gantt" && project && <GanttView project={project} tasks={tasks} stages={workflow?.stages || []} onOpen={setTaskDraft}/>}
         {view === "releases" && project && <ReleasesView data={data} project={project} tasks={tasks} reload={() => load(true)} notify={notify}/>}
         {view === "search" && <SearchView data={data} onOpen={setTaskDraft} reload={() => load(true)} notify={notify}/>}
@@ -344,7 +361,8 @@ function ProjectCard({ project, tasks, users, onOpen, data, onChanged }) {
 }
 
 // Показывает рабочие этапы и отдельную колонку доступных запланированных задач.
-function BoardView({ project, workflow, tasks, data, onOpen, onNew, onMoved, query = "" }) {
+// Показывает доску, фильтры, планирование и управление участниками текущего проекта.
+function BoardView({ project, workflow, tasks, data, onOpen, onNew, onMoved, onChanged, query = "" }) {
   const [drag, setDrag] = useState(null);
   const [dropStageId, setDropStageId] = useState(null);
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -355,7 +373,7 @@ function BoardView({ project, workflow, tasks, data, onOpen, onNew, onMoved, que
   const canEdit = permissions["task.edit"];
   const visibleTasks = tasks.filter((task) => (!filters.priority || task.priority === filters.priority) && (!filters.assignee || Number(task.assignee_id) === Number(filters.assignee)) && (!filters.issueType || Number(task.issue_type_id) === Number(filters.issueType)) && (!filters.overdue || (!task.is_done && task.due_date && task.due_date < dateOffset(0))));
   const activeFilters = Object.values(filters).filter(Boolean).length;
-  return <div className="work-view"><div className="work-head"><div><span className="project-key">{project.key_code}</span><h1>{project.name}</h1><p>{workflow.name} · {visibleTasks.length} из {tasks.length} задач</p></div><div className="member-filter"><div className="avatar-stack">{data.users.slice(0, 5).map((user) => <span key={user.id}>{avatar(user.display_name, user.avatar_color, "small")}</span>)}</div><button className={`secondary ${filtersOpen ? "active" : ""}`} onClick={() => setFiltersOpen((value) => !value)} aria-expanded={filtersOpen}><Icon name="fields" size={16}/>Фильтры{activeFilters ? ` · ${activeFilters}` : ""}</button></div></div>{filtersOpen && <div className="board-filters"><select value={filters.priority} onChange={(event) => setFilters({ ...filters, priority: event.target.value })}><option value="">Все приоритеты</option>{Object.entries(PRIORITY_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select><select value={filters.assignee} onChange={(event) => setFilters({ ...filters, assignee: event.target.value })}><option value="">Все исполнители</option>{data.users.map((user) => <option key={user.id} value={user.id}>{user.display_name}</option>)}</select><select value={filters.issueType} onChange={(event) => setFilters({ ...filters, issueType: event.target.value })}><option value="">Все типы задач</option>{data.issueTypes.map((type) => <option key={type.id} value={type.id}>{type.name}</option>)}</select><label><input type="checkbox" checked={filters.overdue} onChange={(event) => setFilters({ ...filters, overdue: event.target.checked })}/> Только просроченные</label><button className="text-button" onClick={() => setFilters({ priority: "", assignee: "", issueType: "", overdue: false })}>Сбросить</button></div>}<div className="board">{permissions["planning.view"]&&<BoardPlans key={project.id} project={project} data={data} filters={filters} query={query}/>} {workflow.stages.map((stage) => { const columnTasks = visibleTasks.filter((task) => task.stage_id === stage.id); const limitHit = stage.wip_limit && tasks.filter((task) => task.stage_id === stage.id).length >= stage.wip_limit; const isDropTarget = Number(dropStageId) === Number(stage.id) && Number(drag?.sourceStageId) !== Number(stage.id); return <div className={`board-column ${isDropTarget ? "drop-target" : ""}`} key={stage.id} onDragEnter={() => canEdit && setDropStageId(stage.id)} onDragOver={(event) => { if (!canEdit) return; event.preventDefault(); event.dataTransfer.dropEffect = "move"; if (Number(dropStageId) !== Number(stage.id)) setDropStageId(stage.id); }} onDrop={() => { if (canEdit && drag && Number(drag.sourceStageId) !== Number(stage.id)) onMoved(drag.taskId, stage.id); setDrag(null); setDropStageId(null); }}><div className="column-head"><div><span className="stage-dot" style={{ background: stage.color }}/><strong>{stage.name}</strong><span>{columnTasks.length}</span>{stage.wip_limit && <small className={limitHit ? "limit-hit" : ""}>WIP {tasks.filter((task) => task.stage_id === stage.id).length}/{stage.wip_limit}</small>}</div>{canCreate && <button onClick={() => onNew(stage.id)} aria-label={`Создать задачу на этапе «${stage.name}»`} title="Создать задачу"><Icon name="plus" size={16}/></button>}</div><div className="task-list">{columnTasks.map((task) => <TaskCard key={task.id} task={task} project={project} onOpen={() => onOpen({ ...task })} onDrag={canEdit ? (event) => { event.dataTransfer.effectAllowed = "move"; setDrag({ taskId: task.id, sourceStageId: task.stage_id }); } : null} onDragEnd={() => { setDrag(null); setDropStageId(null); }}/>) }{!columnTasks.length && <div className="drop-zone">{activeFilters ? "Нет задач по фильтру" : canEdit ? "Перетащите задачу сюда" : "Задач пока нет"}</div>}</div></div>; })}</div></div>;
+  return <div className="work-view"><div className="work-head"><div><span className="project-key">{project.key_code}</span><h1>{project.name}</h1><p>{workflow.name} · {visibleTasks.length} из {tasks.length} задач</p></div><div className="member-filter"><ProjectActions accessOnly project={project} data={data} onChanged={onChanged}/><div className="avatar-stack">{data.users.slice(0, 5).map((user) => <span key={user.id}>{avatar(user.display_name, user.avatar_color, "small")}</span>)}</div><button className={`secondary ${filtersOpen ? "active" : ""}`} onClick={() => setFiltersOpen((value) => !value)} aria-expanded={filtersOpen}><Icon name="fields" size={16}/>Фильтры{activeFilters ? ` · ${activeFilters}` : ""}</button></div></div>{filtersOpen && <div className="board-filters"><select value={filters.priority} onChange={(event) => setFilters({ ...filters, priority: event.target.value })}><option value="">Все приоритеты</option>{Object.entries(PRIORITY_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select><select value={filters.assignee} onChange={(event) => setFilters({ ...filters, assignee: event.target.value })}><option value="">Все исполнители</option>{data.users.map((user) => <option key={user.id} value={user.id}>{user.display_name}</option>)}</select><select value={filters.issueType} onChange={(event) => setFilters({ ...filters, issueType: event.target.value })}><option value="">Все типы задач</option>{data.issueTypes.map((type) => <option key={type.id} value={type.id}>{type.name}</option>)}</select><label><input type="checkbox" checked={filters.overdue} onChange={(event) => setFilters({ ...filters, overdue: event.target.checked })}/> Только просроченные</label><button className="text-button" onClick={() => setFilters({ priority: "", assignee: "", issueType: "", overdue: false })}>Сбросить</button></div>}<div className="board">{permissions["planning.view"]&&<BoardPlans key={project.id} project={project} data={data} filters={filters} query={query}/>} {workflow.stages.map((stage) => { const columnTasks = visibleTasks.filter((task) => task.stage_id === stage.id); const limitHit = stage.wip_limit && tasks.filter((task) => task.stage_id === stage.id).length >= stage.wip_limit; const isDropTarget = Number(dropStageId) === Number(stage.id) && Number(drag?.sourceStageId) !== Number(stage.id); return <div className={`board-column ${isDropTarget ? "drop-target" : ""}`} key={stage.id} onDragEnter={() => canEdit && setDropStageId(stage.id)} onDragOver={(event) => { if (!canEdit) return; event.preventDefault(); event.dataTransfer.dropEffect = "move"; if (Number(dropStageId) !== Number(stage.id)) setDropStageId(stage.id); }} onDrop={() => { if (canEdit && drag && Number(drag.sourceStageId) !== Number(stage.id)) onMoved(drag.taskId, stage.id); setDrag(null); setDropStageId(null); }}><div className="column-head"><div><span className="stage-dot" style={{ background: stage.color }}/><strong>{stage.name}</strong><span>{columnTasks.length}</span>{stage.wip_limit && <small className={limitHit ? "limit-hit" : ""}>WIP {tasks.filter((task) => task.stage_id === stage.id).length}/{stage.wip_limit}</small>}</div>{canCreate && <button onClick={() => onNew(stage.id)} aria-label={`Создать задачу на этапе «${stage.name}»`} title="Создать задачу"><Icon name="plus" size={16}/></button>}</div><div className="task-list">{columnTasks.map((task) => <TaskCard key={task.id} task={task} project={project} onOpen={() => onOpen({ ...task })} onDrag={canEdit ? (event) => { event.dataTransfer.effectAllowed = "move"; setDrag({ taskId: task.id, sourceStageId: task.stage_id }); } : null} onDragEnd={() => { setDrag(null); setDropStageId(null); }}/>) }{!columnTasks.length && <div className="drop-zone">{activeFilters ? "Нет задач по фильтру" : canEdit ? "Перетащите задачу сюда" : "Задач пока нет"}</div>}</div></div>; })}</div></div>;
 }
 
 function TaskCard({ task, project, onOpen, onDrag, onDragEnd }) {
@@ -486,15 +504,17 @@ function CustomField({ field, value, onChange }) {
   return <label className="form-field"><span>{field.label}</span><input type={field.field_type === "number" ? "number" : field.field_type === "date" ? "date" : field.field_type === "url" ? "url" : "text"} {...props}/></label>;
 }
 
+// Создаёт закрытый проект в выбранном трайбе и назначает автора владельцем.
 function ProjectModal({ draft, setDraft, data, onClose, onSaved }) {
   const [error, setError] = useState("");
-  async function save(e) { e.preventDefault(); try { await api("/api/projects", { method: "POST", body: JSON.stringify(draft) }); onSaved(); } catch (x) { setError(x.message); } }
+  // Передаёт выбранный трайб вместе с параметрами проекта на серверную проверку.
+  async function save(e) { e.preventDefault(); try { await api("/api/projects", { method: "POST", body: JSON.stringify({...draft,tribe_id:draft.tribe_id||data.currentTribe?.id||data.tribes?.find(tribe=>tribe.can_create_projects)?.id||null}) }); onSaved(); } catch (x) { setError(x.message); } }
   function selectTemplate(value) {
     const template = data.projectTemplates.find((item) => item.id === Number(value));
     if (!template) return setDraft({ ...draft, template_id: null });
     setDraft({ ...draft, template_id: template.id, workflow_id: template.workflow_id, group_id: template.default_group_id || null, color: template.color, target_date: dateOffset(template.duration_days || 30) });
   }
-  return <Modal onClose={onClose}><ModalHead eyebrow="НОВЫЙ ПРОЕКТ" title="Создать проект" onClose={onClose}/><form onSubmit={save}><label className="form-field"><span>Шаблон</span><select value={draft.template_id || ""} onChange={(e) => selectTemplate(e.target.value)}><option value="">Пустой проект</option>{data.projectTemplates.map((template) => <option value={template.id} key={template.id}>{template.name} · {template.default_tasks.length} задач</option>)}</select></label><label className="form-field"><span>Название</span><input autoFocus value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} required/></label><label className="form-field"><span>Ключ проекта</span><input value={draft.key_code} onChange={(e) => setDraft({ ...draft, key_code: e.target.value.toUpperCase() })} placeholder="NOVA" maxLength="12" required/></label><label className="form-field"><span>Группа</span><select value={draft.group_id || ""} onChange={(e) => setDraft({ ...draft, group_id: e.target.value ? Number(e.target.value) : null })}><option value="">Без группы</option>{data.groups.map((g) => <option value={g.id} key={g.id}>{g.name}</option>)}</select></label><label className="form-field"><span>Процесс</span><select value={draft.workflow_id} onChange={(e) => setDraft({ ...draft, workflow_id: Number(e.target.value) })}>{data.workflows.map((w) => <option value={w.id} key={w.id}>{w.name}</option>)}</select></label><label className="form-field span-2"><span>Описание</span><textarea rows="4" value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })}/></label><div className="modal-grid"><label className="form-field"><span>Начало</span><input type="date" value={draft.start_date} onChange={(e) => setDraft({ ...draft, start_date: e.target.value })}/></label><label className="form-field"><span>Целевая дата</span><input type="date" value={draft.target_date} onChange={(e) => setDraft({ ...draft, target_date: e.target.value })}/></label></div>{error && <div className="form-error">{error}</div>}<div className="modal-actions"><span/><span/><button type="button" className="secondary" onClick={onClose}>Отмена</button><button className="primary">Создать проект</button></div></form></Modal>;
+  return <Modal onClose={onClose}><ModalHead eyebrow="НОВЫЙ ПРОЕКТ" title="Создать проект" onClose={onClose}/><form onSubmit={save}><label className="form-field"><span>Трайб</span><select required value={draft.tribe_id||data.currentTribe?.id||data.tribes?.find(tribe=>tribe.can_create_projects)?.id||""} onChange={event=>setDraft({...draft,tribe_id:Number(event.target.value)})}><option value="">Выберите трайб</option>{(data.tribes||[]).filter(tribe=>tribe.can_create_projects).map(tribe=><option key={tribe.id} value={tribe.id}>{tribe.name}</option>)}</select></label><p className="tribe-muted">Вы станете владельцем. Проект увидят назначенные сотрудники и группы, руководители этого трайба и администраторы компании.</p><label className="form-field"><span>Шаблон</span><select value={draft.template_id || ""} onChange={(e) => selectTemplate(e.target.value)}><option value="">Пустой проект</option>{data.projectTemplates.map((template) => <option value={template.id} key={template.id}>{template.name} · {template.default_tasks.length} задач</option>)}</select></label><label className="form-field"><span>Название</span><input autoFocus value={draft.name} onChange={(e) => setDraft({ ...draft, name: e.target.value })} required/></label><label className="form-field"><span>Ключ проекта</span><input value={draft.key_code} onChange={(e) => setDraft({ ...draft, key_code: e.target.value.toUpperCase() })} placeholder="NOVA" maxLength="12" required/></label><label className="form-field"><span>Группа</span><select value={draft.group_id || ""} onChange={(e) => setDraft({ ...draft, group_id: e.target.value ? Number(e.target.value) : null })}><option value="">Без группы</option>{data.groups.map((g) => <option value={g.id} key={g.id}>{g.name}</option>)}</select></label><label className="form-field"><span>Процесс</span><select value={draft.workflow_id} onChange={(e) => setDraft({ ...draft, workflow_id: Number(e.target.value) })}>{data.workflows.map((w) => <option value={w.id} key={w.id}>{w.name}</option>)}</select></label><label className="form-field span-2"><span>Описание</span><textarea rows="4" value={draft.description} onChange={(e) => setDraft({ ...draft, description: e.target.value })}/></label><div className="modal-grid"><label className="form-field"><span>Начало</span><input type="date" value={draft.start_date} onChange={(e) => setDraft({ ...draft, start_date: e.target.value })}/></label><label className="form-field"><span>Целевая дата</span><input type="date" value={draft.target_date} onChange={(e) => setDraft({ ...draft, target_date: e.target.value })}/></label></div>{error && <div className="form-error">{error}</div>}<div className="modal-actions"><span/><span/><button type="button" className="secondary" onClick={onClose}>Отмена</button><button className="primary">Создать проект</button></div></form></Modal>;
 }
 
 function GroupModal({ draft, setDraft, onClose, onSaved }) {

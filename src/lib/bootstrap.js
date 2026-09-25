@@ -7,11 +7,15 @@ import { API_SCOPE_CATALOG, DEFAULT_API_SCOPES, apiScopes } from "./api-access.j
 import { evaluateTaskSlas, normalizeTaskSlaPolicy } from "./task-sla.js";
 import { knowledgeAccessAtLeast, knowledgeAccessMap } from "./knowledge-access.js";
 import { legacyIntegrationSummaries } from './legacy-integrations.js';
+import {listTribes} from './tribe-policy.js';
 
+// Возвращает разрешённые данные компании и пространства трайбов без расширения доступа к проектам.
 export async function getBootstrap(user) {
   const workspaceId = user.workspace_id;
   const workspacePermissions = await workspacePermissionSet(user);
   const workspacePermissionMap = permissionMap(workspacePermissions);
+  const tribes=await listTribes(user);
+  if(tribes.some(tribe=>tribe.can_create_projects))workspacePermissionMap['project.create']=true;
   const adminAccess = ["operations.view", "user.manage", "group.manage", "role.manage", "workflow.manage", "field.manage", "project.template.manage", "automation.manage", "integration.manage", "ai.configure", "sla.manage", "api.access.manage", "import.manage", "mail.manage", "auth.manage", "audit.view"].some((key) => workspacePermissions.has(key));
   const [workspaceRows, groups, projects, stages, fields, users, tasks, dependencies, issueTypes, components, labels, sprints, releases, savedFilters, dashboards, widgets, notifications, knowledgeSpaces, knowledgeArticles, projectTemplates, taskSlaPolicies, dashboardPreferences, myApiAccessRows, myApiTokens] = await Promise.all([
     rows("SELECT id, name, slug FROM workspaces WHERE id = ?", [workspaceId]),
@@ -167,11 +171,12 @@ export async function getBootstrap(user) {
   }
 
   return {
+    tribes,
     workspace: workspaceRows[0],
     user,
     permissions: {
       admin: adminAccess,
-      manageProjects: workspacePermissions.has("project.create"),
+      manageProjects: Boolean(workspacePermissionMap['project.create']),
       writeTasks: Object.values(projectPermissions).some((permissions) => permissions["task.create"] || permissions["task.edit"]),
       features: workspacePermissionMap,
       projects: projectPermissions,
@@ -205,7 +210,7 @@ export async function getBootstrap(user) {
     knowledgeTeams: canViewKnowledge ? visibleKnowledgeTeams : [],
     knowledgeTeamMembers: canViewKnowledge ? knowledgeTeamMembers : [],
     knowledgeSpacePermissions: canViewKnowledge ? knowledgeSpacePermissions : [],
-    projectTemplates: (workspacePermissions.has("project.create") || workspacePermissions.has("project.template.manage")) ? projectTemplates.map((template) => ({ ...template, default_tasks: parseJson(template.default_tasks_json, []) })) : [],
+    projectTemplates: (workspacePermissionMap['project.create'] || workspacePermissions.has("project.template.manage")) ? projectTemplates.map((template) => ({ ...template, default_tasks: parseJson(template.default_tasks_json, []) })) : [],
     administration,
     settings,
   };

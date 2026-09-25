@@ -11,11 +11,11 @@ const identity={id:2,user_id:70,owner_id:7,monthly_tokens:1000,policy_json:{proj
 
 test('service accounts never inherit global admin, project assignments or open knowledge spaces',async()=>{
  const db={'db.js':{one:async sql=>{assert.match(sql,/FROM ai_agent_identities/);return identity;},rows:fail}};
- const permissions=await load('permissions.js',db);assert.deepEqual([...await permissions.projectPermissionSet(service,{id:3,workspace_id:1})].sort(),['agent.run','agent.view','project.browse']);assert.equal((await permissions.projectPermissionSet(service,{id:9,workspace_id:1})).size,0);assert.deepEqual([...await permissions.workspacePermissionSet(service)],['knowledge.view']);
+ const permissions=await load('permissions.js',db);assert.deepEqual([...await permissions.projectPermissionSet(service,{id:3,workspace_id:1,access_mode:'members',owner_id:7})].sort(),['agent.run','agent.view','project.browse']);assert.equal((await permissions.projectPermissionSet(service,{id:9,workspace_id:1,access_mode:'members'})).size,0);assert.deepEqual([...await permissions.workspacePermissionSet(service)],['knowledge.view']);
  const kb=await load('knowledge-access.js',db);const access=await kb.knowledgeAccessMap(service,[{id:4,visibility:'private'},{id:9,visibility:'public'}]);assert.equal(access.get(4),'view');assert.equal(access.get(9),'none');
 });
 test('disabled identity or owner removes all permissions and denies model reservation',async()=>{
- const p=await load('permissions.js',{'db.js':{one:async()=>null}});assert.equal((await p.workspacePermissionSet(service)).size,0);assert.equal((await p.projectPermissionSet(service,{id:3,workspace_id:1})).size,0);
+ const p=await load('permissions.js',{'db.js':{one:async()=>null}});assert.equal((await p.workspacePermissionSet(service)).size,0);assert.equal((await p.projectPermissionSet(service,{id:3,workspace_id:1,access_mode:'members',owner_id:7})).size,0);
  const m=await load('agent-identity-policy.js',{'db.js':{one:async()=>null}});await assert.rejects(()=>m.readAgentIdentity(service),{status:403});await assert.rejects(()=>m.assertIdentityModelBudget(service,profileId,1,{query:async()=>[[]]}),{status:403});
 });
 test('identity policy restricts projects, tools, source kinds and each model, with cumulative token budget',async()=>{

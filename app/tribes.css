@@ -1,0 +1,45 @@
+/* Ограничивает оформление пространствами и списками доступа, не меняя соседние формы. */
+.tribe-page { display:grid;gap:24px; }
+.tribe-page-head,.tribe-list-head { display:flex;justify-content:space-between;align-items:center;gap:20px;flex-wrap:wrap; }
+.tribe-page-head h1 { margin:8px 0;font-size:32px;letter-spacing:-.8px; }
+.tribe-page-head h2,.tribe-card h2 { margin:8px 0;font-size:22px; }
+.tribe-page-head p,.tribe-muted,.tribe-card small { color:var(--text-secondary,#687184);font-size:14px;line-height:1.6; }
+.tribe-cards { display:grid;grid-template-columns:repeat(auto-fit,minmax(min(280px,100%),1fr));gap:16px; }
+.tribe-card { border:1px solid #e4e7ed;border-radius:20px;background:#fff;padding:24px;text-align:left;min-width:0; }
+.tribe-choice { display:grid;gap:8px;align-content:start;cursor:pointer;color:inherit; }
+.tribe-choice:hover,.tribe-choice.selected { border-color:#e30611;box-shadow:0 4px 24px #e3061109; }
+.tribe-choice p { margin:0;overflow-wrap:anywhere; }
+.tribe-mark { display:grid;place-items:center;width:44px;height:44px;border-radius:14px;color:#fff;font-weight:750; }
+.tribe-badge { display:inline-flex;width:fit-content;padding:5px 9px;border-radius:8px;background:#fff0f3;color:#be123c;font-size:12px;font-weight:650; }
+.tribe-detail { padding:24px;border-radius:20px;display:grid;gap:20px; }
+.tribe-tabs { display:flex;flex-wrap:wrap;gap:6px;border-bottom:1px solid #e7eaf0;padding-bottom:10px; }
+.tribe-tabs button { padding:9px 14px;border-radius:10px;background:transparent;border:0;color:#647084;cursor:pointer;font-weight:650; }
+.tribe-tabs button.active { background:#fff0f3;color:#d40035; }
+.tribe-projects { display:grid;gap:10px; }
+.tribe-projects>button { display:flex;align-items:center;text-align:left;gap:14px;border:1px solid #e7eaf0;background:#fff;padding:18px;border-radius:12px;cursor:pointer;color:inherit; }
+.tribe-projects>button strong { flex:1;overflow-wrap:anywhere; }
+.tribe-people>article { display:flex;align-items:center;justify-content:space-between;gap:16px;padding:16px 0;border-bottom:1px solid #edf0f5; }
+.tribe-people small { display:block;color:#687184;font-size:13px;margin-top:5px;max-width:660px; }
+.tribe-settings { display:grid;grid-template-columns:repeat(auto-fit,minmax(min(300px,100%),1fr));gap:24px; }
+.tribe-form { display:grid;gap:18px; }
+.tribe-rights { display:grid;gap:12px; }
+.tribe-rights label { display:flex;align-items:flex-start;gap:12px;padding:12px;background:#f8f9fc;border-radius:12px; }
+.tribe-rights input[type=checkbox] { flex:none;width:18px;height:18px;accent-color:#e30611; }
+.tribe-rights small { display:block;color:#687184;font-size:13px;margin-top:4px; }
+.tribe-card-top,.tribe-card footer { display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap; }
+.tribe-card footer { border-top:1px solid #edf0f5;margin-top:20px;padding-top:16px;font-size:13px; }
+.tribe-switch { display:grid;gap:6px;margin:0 16px 14px; }
+.tribe-switch>span { color:#7b8493;font-size:12px;text-transform:uppercase;letter-spacing:.7px; }
+.tribe-switch select { width:100%;min-width:0;padding:10px;border:1px solid #e3e6ec;border-radius:10px;background:#f8f9fb;color:inherit; }
+.mobile-tribe-switch { display:none; }
+.desktop-tribe-switch { flex-shrink:0; }
+.work-head .member-filter { flex-wrap:wrap;justify-content:flex-end; }
+/* Сохраняет нижнюю навигацию телефона свободной и переносит выбор пространства над содержимым. */
+@media(max-width:760px){.sidebar .desktop-tribe-switch { display:none; }.mobile-tribe-switch { display:grid;margin:14px 13px 0; }.mobile-tribe-switch>span { display:none; }.work-head .member-filter { justify-content:flex-start; }.work-head:has(.project-actions) { flex-wrap:wrap; }}
+.project-people { display:grid;gap:20px; }
+.project-owner { display:flex;justify-content:space-between;align-items:center;gap:16px;padding:20px;border:1px solid #f2dce2;background:linear-gradient(120deg,#fff8fa,#fff);border-radius:16px;flex-wrap:wrap; }
+.project-owner h3 { margin:8px 0; }.project-owner p { color:#687184;margin:0;font-size:13px; }
+.project-visibility { display:flex;gap:12px;align-items:center;flex-wrap:wrap; }.project-visibility p { flex:1;min-width:200px;color:#687184;font-size:13px;margin:0; }
+.project-people .project-grant-form { margin:0; }.project-people .ai-fieldset>h3 { margin:0 0 16px; }.project-people .project-effective summary { cursor:pointer;font-weight:650;margin-bottom:16px; }
+.employee-group-list { max-height:320px;overflow:auto;display:grid;gap:8px; }.employee-group-list label { display:flex;gap:12px;align-items:center;padding:10px;border-radius:8px;background:#f8f9fc; }.employee-group-list input { width:18px;height:18px;flex:none;accent-color:#e30611; }.employee-group-list small { display:block;color:#687184; }
+@media(max-width:700px){.tribe-detail,.tribe-card { padding:18px; }.tribe-people>article { align-items:flex-start;flex-direction:column; }.tribe-page-head h1 { font-size:27px; }.tribe-projects>button { flex-wrap:wrap; }}

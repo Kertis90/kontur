@@ -1,5 +1,12 @@
 # Контур Work в Kubernetes
 
+Версия 0.23.0 включает трайбы, владельцев проектов и согласования ИИ.
+Обновление требует миграции MySQL 044 или PostgreSQL 003.
+[Правила доступа](../../../docs/TRIBES-AND-ACCESS.md) и
+[зеркала при сборке образа](../../../docs/BUILD-SOURCES.md).
+Helm использует готовый образ; адреса пакетных репозиториев в pod не передаются.
+
+
 Начиная с 0.22 выбирайте `database.engine: mysql` или `postgres`. Для PostgreSQL 18
 используйте `values-postgres.example.yaml`, порт 5432 и ключ `POSTGRES_PASSWORD`
 во внешнем Secret. Миграции и CronJob резервирования выбираются автоматически.

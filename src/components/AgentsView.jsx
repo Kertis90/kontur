@@ -73,7 +73,8 @@ function AgentJournal({agent,onClose,onRun}){
  useEffect(()=>{const t=setInterval(()=>{if(document.visibilityState==='visible')api.reload();},5000);return()=>clearInterval(t);},[api.reload]);
  return <ToolDialog title={`Журнал · ${agent.name}`} onClose={onClose}><Field label="Статус"><select value={status} onChange={e=>{setStatus(e.target.value);setOffset(0);}}><option value="">Все запуски</option>{Object.entries(statusNames).map(([k,v])=><option value={k} key={k}>{v}</option>)}</select></Field><ErrorLine error={api.error}/><div className="agent-run-list">{api.value?.map(run=><button key={run.id} onClick={()=>onRun(run.id)}><span className={`agent-status ${run.status}`}>{statusNames[run.status]}</span><strong>Запуск #{run.id}{Boolean(run.dry_run)&&' · тест'}</strong><span>{stamp(run.created_at)} · {run.actor_name}</span><small>{run.trigger_type==='event'?'Событие':run.trigger_type==='schedule'?'Расписание':'Ручной запуск'}</small></button>)}</div>{!api.value?.length&&<Empty>{api.loading?'Загружаем…':'Запусков пока нет'}</Empty>}<div className="connector-actions"><button className="secondary" disabled={!offset} onClick={()=>setOffset(Math.max(0,offset-50))}>← Назад</button><button className="secondary" disabled={api.value?.length!==50} onClick={()=>setOffset(offset+50)}>Далее →</button></div></ToolDialog>;
 }
-function AgentRun({id,rights,userId,notify,onClose}){
+// Показывает результат и выполняет согласование через существующие защищённые серверные методы.
+export function AgentRun({id,rights,userId,notify,onClose}){
  const api=useWork(`agents/runs/${id}`),[busy,act]=useAction(notify),[indices,setIndices]=useState([]),[rating,setRating]=useState(5),[note,setNote]=useState(''),run=api.value;
  useEffect(()=>{setIndices([]);setRating(5);setNote('');},[id]);
  useEffect(()=>{if(run?.feedback){setRating(run.feedback.rating);setNote(run.feedback.note);}},[run?.feedback?.rating,run?.feedback?.note]);

@@ -61,10 +61,14 @@ try {
   const [[existingProject]] = await db.query("SELECT id FROM projects WHERE workspace_id = 1 AND key_code = 'NOVA'");
   let projectId = existingProject?.id;
   if (!projectId) {
+    // Создаёт демонстрационное пространство только вместе с новым демонстрационным проектом.
+    let [[tribe]]=await db.query("SELECT id FROM tribes WHERE workspace_id=1 AND name='Основной трайб'");
+    if(!tribe){const [created]=await db.query("INSERT INTO tribes(workspace_id,leader_id,name,description,created_by) VALUES(1,?,'Основной трайб','Демонстрационное пространство команды',?)",[admin.id,admin.id]);tribe={id:created.insertId};}
+    await db.query('INSERT IGNORE INTO tribe_members(tribe_id,user_id) VALUES(?,?)',[tribe.id,admin.id]);
     const [project] = await db.query(
-      `INSERT INTO projects (workspace_id, group_id, workflow_id, key_code, name, description, color, start_date, target_date, created_by)
-       VALUES (1, 1, ?, 'NOVA', 'Запуск Nova', 'Подготовка и запуск новой цифровой услуги', '#675EE7', CURRENT_DATE, DATE_ADD(CURRENT_DATE, INTERVAL 45 DAY), ?)`,
-      [workflowId, admin.id],
+      `INSERT INTO projects (workspace_id, group_id, workflow_id, key_code, name, description, color, start_date, target_date, created_by,owner_id,tribe_id)
+       VALUES (1, 1, ?, 'NOVA', 'Запуск Nova', 'Подготовка и запуск новой цифровой услуги', '#675EE7', CURRENT_DATE, DATE_ADD(CURRENT_DATE, INTERVAL 45 DAY), ?,?,?)`,
+      [workflowId, admin.id,admin.id,tribe.id],
     );
     projectId = project.insertId;
     await db.query("INSERT INTO project_members (project_id, user_id, project_role) VALUES (?, ?, 'manager')", [projectId, admin.id]);

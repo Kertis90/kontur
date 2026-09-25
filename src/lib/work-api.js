@@ -1,4 +1,5 @@
 import {operationsApi} from './work-operations.js';
+import {tribesApi} from './work-tribes.js';
 import {plansApi} from './work-plans.js';
 import {favoritesApi} from './work-favorites.js';
 import {planStrategyApi} from './plan-strategy.js';
@@ -39,6 +40,7 @@ import { personalApi } from './work-personal.js';
 import { recordingConferenceAccess } from './recordings.js';
 // Передаёт запрос соответствующему рабочему разделу, сохраняя отдельные проверки его прав.
 export async function handleWorkApi(request,path,user){
+  if(path[0]==='tribes')return tribesApi(request,path,user);
   if(path[0]==='favorites')return favoritesApi(request,path,user);
   if(path[0]==='roadmap')return path[1]==='apply'&&request.method==='POST'?applyRoadmapDates(request,user):roadmapApi(request,path,user);
   if(path[0]==='plans'&&path[2]==='assistant')return planAssistantApi(request,path,user);

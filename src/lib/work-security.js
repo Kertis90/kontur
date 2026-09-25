@@ -8,8 +8,9 @@ import { body,reply,WorkError,workspaceFor,positiveId,visibleProjects } from './
 import { workspacePermissionSet,projectPermissionSet,PERMISSION_CATALOG } from './permissions.js';
 import { audit } from './audit.js';
 const timestamp=s=>Date.parse(/[TZ]|[+-]\d\d:\d\d$/.test(s||'')?s:String(s).replace(' ','T')+'Z');
+// Ограничивает назначение глобальных руководящих ролей администраторами компании.
 export function assertAccountChange(actor,target,patch,activeAdmins=0){
- const privileged=['owner','admin','project_manager'],full=['owner','admin'];
+ const privileged=['owner','admin','project_manager','tribe_leader'],full=['owner','admin'];
  if((target?.global_role==='owner'||patch.global_role==='owner')&&actor.global_role!=='owner')throw new WorkError(403,'Только владелец может менять учётную запись владельца');
  if(!full.includes(actor.global_role)&&(privileged.includes(target?.global_role)||privileged.includes(patch.global_role)))throw new WorkError(403,'Назначение и изменение привилегированных учётных записей доступно администратору');
  if(target&&Number(target.id)===Number(actor.id)&&patch.status&&patch.status!=='active')throw new WorkError(409,'Нельзя отключить свою учётную запись');

@@ -2,18 +2,22 @@ import { z } from "zod";
 import { one, rows, transaction } from "./db.js";
 import { audit } from "./audit.js";
 import { projectPermissionSet, hasWorkspacePermission, PERMISSION_CATALOG, PROJECT_MEMBERSHIP_DEFAULTS } from "./permissions.js";
+import {companyAdmin,tribeAccess} from './tribe-policy.js';
 
 export class ProjectAccessError extends Error {
+  // Возвращает понятную ошибку управления доступом без раскрытия сведений о БД.
   constructor(status, message) { super(message); this.status = status; }
 }
 const id = z.coerce.number().int().positive().safe();
 const send = (value, status = 200) => Response.json(value, { status, headers: { "Cache-Control": "private, no-store" } });
 const roleNames = { manager: "Руководитель", member: "Участник", viewer: "Наблюдатель" };
 
+// Показывает только роли, права которых сотрудник вправе передать другим.
 export function grantableProjectRoles(permissions) {
   return Object.entries(PROJECT_MEMBERSHIP_DEFAULTS).filter(([, keys]) => keys.every((key) => permissions.has(key))).map(([key]) => ({ key, name: roleNames[key] }));
 }
 
+// Проверяет область компании и действующие права конкретного проекта.
 async function projectAccess(user, projectId, permission, deleted = false) {
   const project = await one("SELECT * FROM projects WHERE id=? AND workspace_id=?", [projectId, user.workspace_id]);
   if (!project || (project.deleted_at && !deleted)) throw new ProjectAccessError(404, "Проект не найден");
@@ -22,36 +26,57 @@ async function projectAccess(user, projectId, permission, deleted = false) {
   return { project, permissions };
 }
 
+// Блокирует сначала трайб, затем проект: отзыв членства не может пересечь передачу владения.
+async function lockedAccess(connection,user,projectId,revision){
+  const initial=await one('SELECT tribe_id FROM projects WHERE id=? AND workspace_id=?',[projectId,user.workspace_id]);
+  if(initial?.tribe_id)await connection.query('SELECT id FROM tribes WHERE id=? FOR UPDATE',[initial.tribe_id]);
+  const [[project]]=await connection.query('SELECT * FROM projects WHERE id=? AND workspace_id=? FOR UPDATE',[projectId,user.workspace_id]);
+  if(!project||project.deleted_at)throw new ProjectAccessError(404,'Проект не найден');
+  if(Number(project.tribe_id)!==Number(initial?.tribe_id))throw new ProjectAccessError(409,'Трайб проекта изменился. Обновите страницу');
+  const rights=await projectPermissionSet(user,project);
+  if(!rights.has('project.browse')||!rights.has('project.access.manage'))throw new ProjectAccessError(403,'Право управления доступом отозвано');
+  if(revision!==undefined&&Number(project.access_revision)!==revision)throw new ProjectAccessError(409,'Список участников уже изменён. Обновите его и повторите действие');
+  return {project,rights};
+}
+
+// Назначает сотруднику или группе проектную роль без повышения собственных полномочий.
 export async function changeProjectAccess(user, projectId, input, request) {
-  const data = z.object({ principal_type: z.enum(["user", "group"]), principal_id: id, project_role: z.enum(["manager", "member", "viewer"]) }).parse(input);
+  const data = z.object({ principal_type: z.enum(["user", "group"]), principal_id: id, project_role: z.enum(["manager", "member", "viewer"]),revision:id.optional() }).parse(input);
   const { permissions } = await projectAccess(user, projectId, "project.access.manage");
   if (!grantableProjectRoles(permissions).some((role) => role.key === data.project_role)) throw new ProjectAccessError(403, "Нельзя выдать роль с разрешениями, которых у вас нет");
   const table = data.principal_type === "user" ? "users" : "access_groups";
-  const principal = await one(`SELECT id FROM ${table} WHERE id=? AND workspace_id=? AND ${data.principal_type === "user" ? "status='active'" : "active=TRUE"}`, [data.principal_id, user.workspace_id]);
+  const principal = await one(`SELECT id FROM ${table} WHERE id=? AND workspace_id=? AND ${data.principal_type === "user" ? "status='active' AND is_service=FALSE" : "active=TRUE"}`, [data.principal_id, user.workspace_id]);
   if (!principal) throw new ProjectAccessError(422, "Пользователь или группа недоступны в этом рабочем пространстве");
   await transaction(async (connection) => {
-    await connection.query("SELECT id FROM projects WHERE id=? FOR UPDATE", [projectId]);
+    const {project,rights}=await lockedAccess(connection,user,projectId,data.revision);
+    if(!grantableProjectRoles(rights).some(role=>role.key===data.project_role))throw new ProjectAccessError(403,'Право назначения этой роли отозвано');
+    if(data.principal_type==='user'&&Number(project.owner_id)===data.principal_id&&data.project_role!=='manager')throw new ProjectAccessError(409,'Сначала передайте проект другому владельцу');
+    if(data.principal_type==='user'&&project.tribe_id&&!await tribeAccess({...user,id:data.principal_id,global_role:'member'},project.tribe_id,connection))throw new ProjectAccessError(422,'Сначала добавьте сотрудника в трайб проекта');
     if (data.principal_type === "user" && data.project_role !== "manager") {
       const [managers] = await connection.query("SELECT user_id FROM project_members WHERE project_id=? AND project_role='manager'", [projectId]);
       if (managers.length === 1 && Number(managers[0].user_id) === data.principal_id) throw new ProjectAccessError(409, "Назначьте другого руководителя перед изменением роли последнего руководителя");
     }
     if (data.principal_type === "user") await connection.query("INSERT INTO project_members (project_id, user_id, project_role) VALUES (?, ?, ?) ON DUPLICATE KEY UPDATE project_role=VALUES(project_role)", [projectId, data.principal_id, data.project_role]);
     else await connection.query("INSERT INTO project_group_access (project_id, group_id, project_role, created_by) VALUES (?, ?, ?, ?) ON DUPLICATE KEY UPDATE project_role=VALUES(project_role), created_by=VALUES(created_by)", [projectId, data.principal_id, data.project_role, user.id]);
+    await connection.query('UPDATE projects SET access_revision=access_revision+1 WHERE id=?',[projectId]);
   });
   await audit(user, "project.access.granted", "project", projectId, data, request);
   return send({ ok: true }, 201);
 }
 
-export async function removeProjectAccess(user, projectId, type, principalId, request) {
+// Отзывает один источник прав и не позволяет удалить владельца или последнего руководителя.
+export async function removeProjectAccess(user, projectId, type, principalId, request,revision) {
   await projectAccess(user, projectId, "project.access.manage");
   z.enum(["user", "group"]).parse(type);
   await transaction(async (connection) => {
-    await connection.query("SELECT id FROM projects WHERE id=? FOR UPDATE", [projectId]);
+    const {project}=await lockedAccess(connection,user,projectId,revision);
+    if(type==='user'&&Number(project.owner_id)===principalId)throw new ProjectAccessError(409,'Нельзя убрать владельца: сначала передайте проект другому сотруднику');
     if (type === "user") {
       const [managers] = await connection.query("SELECT user_id FROM project_members WHERE project_id=? AND project_role='manager'", [projectId]);
       if (managers.length === 1 && Number(managers[0].user_id) === principalId) throw new ProjectAccessError(409, "Нельзя убрать последнего руководителя проекта");
       await connection.query("DELETE FROM project_members WHERE project_id=? AND user_id=?", [projectId, principalId]);
     } else await connection.query("DELETE FROM project_group_access WHERE project_id=? AND group_id=?", [projectId, principalId]);
+    await connection.query('UPDATE projects SET access_revision=access_revision+1 WHERE id=?',[projectId]);
   });
   await audit(user, "project.access.removed", "project", projectId, { principal_type: type, principal_id: principalId }, request);
   return send({ ok: true });
@@ -85,6 +110,24 @@ export async function updateProject(user, projectId, input, request) {
   return send({ ok: true });
 }
 
+// Передаёт владение внутри компании и сохраняет предыдущего владельца руководителем проекта.
+export async function transferProjectOwner(user,projectId,input,request){
+  const data=z.object({user_id:id,revision:id}).strict().parse(input);
+  await projectAccess(user,projectId,'project.access.manage');
+  await transaction(async connection=>{
+    const {project}=await lockedAccess(connection,user,projectId,data.revision);
+    if(!companyAdmin(user)&&Number(project.owner_id)!==Number(user.id))throw new ProjectAccessError(403,'Передать владение может владелец проекта или администратор компании');
+    const [[target]]=await connection.query("SELECT id,workspace_id,global_role,is_service FROM users WHERE id=? AND workspace_id=? AND status='active' AND is_service=FALSE",[data.user_id,user.workspace_id]);
+    if(!target)throw new ProjectAccessError(422,'Выберите действующего сотрудника компании');
+    if(project.tribe_id&&!await tribeAccess({...target,global_role:'member'},project.tribe_id,connection))throw new ProjectAccessError(422,'Новый владелец должен входить в трайб проекта');
+    if(!(await projectPermissionSet(target,{...project,owner_id:target.id})).has('project.access.manage'))throw new ProjectAccessError(409,'Назначенные сотруднику запреты не позволяют управлять этим проектом');
+    await connection.query("INSERT INTO project_members(project_id,user_id,project_role) VALUES(?,?,'manager') ON DUPLICATE KEY UPDATE project_role='manager'",[projectId,data.user_id]);
+    await connection.query('UPDATE projects SET owner_id=?,access_revision=access_revision+1 WHERE id=?',[data.user_id,projectId]);
+  });
+  await audit(user,'project.owner.changed','project',projectId,{owner_id:data.user_id},request);return send({ok:true});
+}
+
+// Обслуживает настройки проекта и назначения сотрудников и групп с одинаковыми проверками для всех клиентов.
 export async function handleProjectAccessApi(request, path, user) {
   const method = request.method;
   const url = new URL(request.url);
@@ -126,6 +169,12 @@ export async function handleProjectAccessApi(request, path, user) {
   }
   if (path[2] === "access") {
     const { project, permissions } = await projectAccess(user, projectId, "project.access.manage");
+    if(path.length===4&&path[3]==='owner'&&method==='POST')return transferProjectOwner(user,projectId,await request.json(),request);
+    if(path.length===4&&path[3]==='mode'&&method==='PATCH'){
+      const data=z.object({access_mode:z.literal('members'),revision:id}).strict().parse(await request.json());
+      await transaction(async connection=>{const {project:fresh}=await lockedAccess(connection,user,projectId,data.revision);if(!companyAdmin(user)&&Number(fresh.owner_id)!==Number(user.id))throw new ProjectAccessError(403,'Видимость меняет владелец проекта или администратор');await connection.query('UPDATE projects SET access_mode=?,access_revision=access_revision+1 WHERE id=?',[data.access_mode,projectId]);});
+      await audit(user,'project.access.mode','project',projectId,data,request);return send({ok:true});
+    }
     if (path.length === 4 && path[3] === "effective" && method === "GET") {
       const target = await one("SELECT id, workspace_id, global_role, email, display_name FROM users WHERE id=? AND workspace_id=? AND status='active'", [id.parse(url.searchParams.get("user_id")), user.workspace_id]);
       if (!target) throw new ProjectAccessError(404, "Пользователь не найден");
@@ -133,16 +182,17 @@ export async function handleProjectAccessApi(request, path, user) {
       return send({ user_id: target.id, user_name: target.display_name, permissions: PERMISSION_CATALOG.filter((permission) => permission.scope === "project").map((permission) => ({ ...permission, allowed: effective.has(permission.key) })) });
     }
     if (path.length === 3 && method === "GET") {
-      const [members, groups, users, availableGroups] = await Promise.all([
-        rows("SELECT member.user_id AS principal_id, member.project_role, account.display_name AS name FROM project_members member JOIN users account ON account.id=member.user_id WHERE member.project_id=? ORDER BY account.display_name", [projectId]),
+      const [members, groups, users, availableGroups,owner] = await Promise.all([
+        rows("SELECT member.user_id AS principal_id, member.project_role, account.display_name AS name,account.status,account.is_service FROM project_members member JOIN users account ON account.id=member.user_id WHERE member.project_id=? ORDER BY account.display_name", [projectId]),
         rows("SELECT access.group_id AS principal_id, access.project_role, access_group.name, access_group.active FROM project_group_access access JOIN access_groups access_group ON access_group.id=access.group_id WHERE access.project_id=? ORDER BY access_group.name", [projectId]),
-        rows("SELECT id, display_name AS name FROM users WHERE workspace_id=? AND status='active' ORDER BY display_name", [user.workspace_id]),
-        rows("SELECT id, name FROM access_groups WHERE workspace_id=? AND active=TRUE ORDER BY name", [user.workspace_id]),
+        rows("SELECT u.id,u.display_name AS name FROM users u WHERE u.workspace_id=? AND u.status='active' AND u.is_service=FALSE AND (? IS NULL OR EXISTS(SELECT 1 FROM tribe_members m WHERE m.user_id=u.id AND m.tribe_id=?)) ORDER BY u.display_name", [user.workspace_id,project.tribe_id||null,project.tribe_id||null]),
+        rows("SELECT g.id,g.name,g.source,(SELECT COUNT(*) FROM access_group_members m JOIN users u ON u.id=m.user_id WHERE m.group_id=g.id AND u.status='active' AND (m.expires_at IS NULL OR m.expires_at>CURRENT_TIMESTAMP)) AS member_count FROM access_groups g WHERE g.workspace_id=? AND g.active=TRUE ORDER BY g.name", [user.workspace_id]),
+        one('SELECT id,display_name AS name,status FROM users WHERE id=? AND workspace_id=?',[project.owner_id||null,user.workspace_id]),
       ]);
-      return send({ members, groups, users, available_groups: availableGroups, grantable_roles: grantableProjectRoles(permissions) });
+      return send({ members, groups, users, owner,tribe_id:project.tribe_id,access_mode:project.access_mode,revision:project.access_revision,can_transfer_owner:companyAdmin(user)||Number(project.owner_id)===Number(user.id),can_manage_groups:await hasWorkspacePermission(user,'group.manage'), available_groups: availableGroups, grantable_roles: grantableProjectRoles(permissions) });
     }
     if (path.length === 3 && method === "POST") return changeProjectAccess(user, projectId, await request.json(), request);
-    if (path.length === 5 && method === "DELETE") return removeProjectAccess(user, projectId, path[3], id.parse(path[4]), request);
+    if (path.length === 5 && method === "DELETE") return removeProjectAccess(user, projectId, path[3], id.parse(path[4]), request,url.searchParams.has('revision')?id.parse(url.searchParams.get('revision')):undefined);
   }
   // Keep existing clients on the same authorization and last-manager checks.
   if (path[2] === "members" && path.length === 3 && method === "POST") {

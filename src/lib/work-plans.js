@@ -3,6 +3,7 @@ import {createHash} from 'node:crypto';
 import {one,rows,transaction} from './db.js';
 import {body,reply,positiveId,projectFor,workspaceFor,validUsers,WorkError} from './work-common.js';
 import {projectPermissionSet} from './permissions.js';
+import {requireProjectTribe} from './tribe-policy.js';
 import {apiBackgroundAllowed} from './api-access.js';
 import {createWorkTask} from './work-tasks.js';
 import {planCreateSchema,planUpdateSchema,planItemCreateSchema,planItemUpdateSchema,checkPlanDates,checkPlanRevision} from './plan-schema.js';
@@ -137,15 +138,16 @@ export async function plansApi(request,path,user){
   });return reply(result);
  }
  if(path[2]==='start-project'&&method==='POST'){
-  const data=z.object({revision:positiveId,project_id:positiveId.optional(),key_code:z.string().trim().regex(/^[A-Z][A-Z0-9]{1,11}$/).optional(),workflow_id:positiveId.optional()}).strict().parse(await body(request));
+  const data=z.object({revision:positiveId,project_id:positiveId.optional(),tribe_id:positiveId.optional(),key_code:z.string().trim().regex(/^[A-Z][A-Z0-9]{1,11}$/).optional(),workflow_id:positiveId.optional()}).strict().parse(await body(request));
   if(!await apiBackgroundAllowed(user,user.api_token_id,'projects:write'))throw new WorkError(403,'Требуется разрешение API на изменение проектов');
-  if(data.project_id){await projectFor(user,data.project_id,'planning.manage',true);await projectFor(user,data.project_id,'planning.view');}else{await workspaceFor(user,'project.create');if(!data.key_code||!data.workflow_id)throw new WorkError(422,'Укажите ключ и рабочий процесс проекта');if(!await one('SELECT id FROM workflows WHERE id=? AND workspace_id=?',[data.workflow_id,user.workspace_id]))throw new WorkError(422,'Рабочий процесс недоступен');}
+  if(data.project_id){await projectFor(user,data.project_id,'planning.manage',true);await projectFor(user,data.project_id,'planning.view');}else{if(!data.tribe_id)await workspaceFor(user,'project.create');await requireProjectTribe(user,data.tribe_id);if(!data.key_code||!data.workflow_id)throw new WorkError(422,'Укажите ключ и рабочий процесс проекта');if(!await one('SELECT id FROM workflows WHERE id=? AND workspace_id=?',[data.workflow_id,user.workspace_id]))throw new WorkError(422,'Рабочий процесс недоступен');}
   const result=await transaction(async connection=>{
    await connection.query('SELECT id FROM workspaces WHERE id=? FOR UPDATE',[user.workspace_id]);const [[current]]=await connection.query('SELECT * FROM work_plans WHERE id=? FOR UPDATE',[plan.id]);await planAccess(user,current,true);
    if(current.project_id){if(data.project_id&&Number(data.project_id)!==Number(current.project_id))throw new WorkError(409,'План уже связан с другим проектом');return {project_id:current.project_id,replayed:true};}
    checkPlanRevision(current,data.revision);let projectId=data.project_id;
    if(!projectId){const [[same]]=await connection.query('SELECT id FROM projects WHERE workspace_id=? AND key_code=?',[user.workspace_id,data.key_code]);if(same)throw new WorkError(409,'Ключ проекта уже занят');
-    const [created]=await connection.query('INSERT INTO projects(workspace_id,workflow_id,key_code,name,description,color,start_date,target_date,created_by) VALUES(?,?,?,?,?,?,?,?,?)',[user.workspace_id,data.workflow_id,data.key_code,current.title,current.description,'#e30611',current.start_date,current.due_date,user.id]);projectId=created.insertId;
+    if(data.tribe_id)await connection.query('SELECT id FROM tribes WHERE id=? FOR UPDATE',[data.tribe_id]);await requireProjectTribe(user,data.tribe_id,connection);
+    const [created]=await connection.query("INSERT INTO projects(workspace_id,workflow_id,key_code,name,description,color,start_date,target_date,created_by,owner_id,tribe_id,access_mode) VALUES(?,?,?,?,?,?,?,?,?,?,?,'members')",[user.workspace_id,data.workflow_id,data.key_code,current.title,current.description,'#e30611',current.start_date,current.due_date,user.id,user.id,data.tribe_id||null]);projectId=created.insertId;
     await connection.query("INSERT INTO project_members(project_id,user_id,project_role) VALUES(?,?,'manager')",[projectId,user.id]);
    }
    await connection.query('UPDATE work_plans SET project_id=?,revision=revision+1 WHERE id=?',[projectId,plan.id]);await planAudit(connection,user,'plan.project.started',plan.id,{project_id:projectId});return {project_id:projectId};
