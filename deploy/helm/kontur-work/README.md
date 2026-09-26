@@ -1,5 +1,8 @@
 # Контур Work в Kubernetes
 
+Версия 0.23.1 исправляет доступ LiveKit и записи встреч к закрытому реестру.
+См. [настройку прокси](../../../docs/BUILD-SOURCES.md) и [пример закрытой сети](values-private.example.yaml).
+
 Версия 0.23.0 включает трайбы, владельцев проектов и согласования ИИ.
 Обновление требует миграции MySQL 044 или PostgreSQL 003.
 [Правила доступа](../../../docs/TRIBES-AND-ACCESS.md) и
@@ -32,8 +35,8 @@ Helm chart разворачивает web-приложение, фоновые w
 Соберите и отправьте образ:
 
 ```bash
-docker build -t registry.company.ru/platform/kontur-work:0.21.0 .
-docker push registry.company.ru/platform/kontur-work:0.21.0
+docker build -t registry.company.ru/platform/kontur-work:0.23.1 .
+docker push registry.company.ru/platform/kontur-work:0.23.1
 ```
 
 Создайте namespace и Secret. Он должен существовать до запуска Helm, потому что pre-install Job применяет миграции до старта приложения:

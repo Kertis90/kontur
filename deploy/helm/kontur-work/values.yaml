@@ -1,8 +1,9 @@
 image:
   repository: registry.example.ru/kontur-work
-  tag: "0.23.0"
+  tag: "0.23.1"
   pullPolicy: IfNotPresent
 
+# Применяется ко всем pod, включая миграции, копии, LiveKit, запись и helm test.
 imagePullSecrets: []
 nameOverride: ""
 fullnameOverride: ""

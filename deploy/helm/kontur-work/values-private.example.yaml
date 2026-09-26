@@ -1,0 +1,24 @@
+# Дополнение к своим values: замените адреса и создайте Secret в том же namespace.
+# HTTP-прокси устанавливается у сборщика и на узлах, пакеты внутри pod не скачиваются.
+image:
+  repository: registry.company.ru/platform/kontur-work
+  # Используется версия из Chart.yaml; можно закрепить свой проверенный тег.
+  tag: ""
+
+imagePullSecrets:
+  - name: kontur-registry
+
+livekit:
+  image:
+    repository: registry.company.ru/livekit/livekit-server
+    tag: v1.13.6
+
+recordings:
+  egress:
+    # Сначала скопируйте проверенный образ; перед запуском закрепите его digest.
+    image: registry.company.ru/livekit/egress:latest
+
+backup:
+  # Используется только образ выбранной БД; саму БД этот chart не устанавливает.
+  mysqlImage: registry.company.ru/library/mysql:8.4
+  postgresImage: registry.company.ru/library/postgres:18-bookworm

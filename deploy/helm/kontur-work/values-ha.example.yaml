@@ -1,6 +1,7 @@
 image:
   repository: registry.company.ru/platform/kontur-work
-  tag: "0.9.0"
+  # Пустой тег берёт версию приложения из Chart.yaml.
+  tag: ""
 
 app:
   replicas: 4

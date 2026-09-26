@@ -1,3 +1,11 @@
+# Стандартные параметры BuildKit действуют только при сборке. Отсутствующие
+# значения сохраняют настройки Docker-клиента; в окружение приложения они не входят.
+x-build-proxy: &build-proxy
+  HTTP_PROXY:
+  HTTPS_PROXY:
+  NO_PROXY:
+  ALL_PROXY:
+
 x-kontur-image: &kontur-image
   image: ${KONTUR_IMAGE:-kontur-work:local}
   build:
@@ -5,6 +13,7 @@ x-kontur-image: &kontur-image
     dockerfile: Dockerfile
     # Необязательные зеркала пакетов; пустые значения в .env берут публичные адреса.
     args:
+      <<: *build-proxy
       NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmjs.org/}
       ALPINE_MIRROR: ${ALPINE_MIRROR:-https://dl-cdn.alpinelinux.org/alpine}
       NODE_IMAGE: ${NODE_IMAGE:-node:22-alpine}
@@ -14,6 +23,9 @@ x-kontur-image: &kontur-image
 # в сборку, пока соответствующая переменная не задана, и Dockerfile берёт свой
 # публичный адрес по умолчанию.
 x-storage-build-args: &storage-build-args
+  <<: *build-proxy
+  # Позволяет получать обработчик Dockerfile 1.7 из своего реестра.
+  BUILDKIT_SYNTAX:
   ARCHIVE_BASE: ${ARCHIVE_BASE:-https://codeload.github.com}
   DEBIAN_MIRROR: ${DEBIAN_MIRROR:-http://deb.debian.org/debian}
   DEBIAN_SECURITY_MIRROR: ${DEBIAN_SECURITY_MIRROR:-http://deb.debian.org/debian-security}
@@ -92,7 +104,8 @@ x-app-environment: &app-environment
 
 services:
   mysql:
-    image: mysql:8.4
+    # Образы инфраструктуры можно брать из своего реестра без правки Compose.
+    image: ${MYSQL_IMAGE:-mysql:8.4}
     restart: unless-stopped
     environment:
       MYSQL_DATABASE: ${MYSQL_DATABASE:-kontur_work}
@@ -115,7 +128,8 @@ services:
     networks: [kontur]
 
   redis:
-    image: redis:7.4-alpine
+    # Сохраняет прежнюю версию при отсутствии своего адреса.
+    image: ${REDIS_IMAGE:-redis:7.4-alpine}
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes", "--maxmemory-policy", "noeviction"]
     volumes:
@@ -173,7 +187,8 @@ services:
     networks: [kontur]
 
   livekit:
-    image: livekit/livekit-server:v1.13.6
+    # Медиа-сервер также доступен через внутренний реестр.
+    image: ${LIVEKIT_IMAGE:-livekit/livekit-server:v1.13.6}
     restart: unless-stopped
     depends_on:
       redis:
@@ -334,7 +349,8 @@ services:
     networks: [kontur]
 
   gateway:
-    image: caddy:2.10-alpine
+    # Адрес HTTPS-шлюза настраивается вместе с остальными образами.
+    image: ${GATEWAY_IMAGE:-caddy:2.10-alpine}
     profiles: [gateway]
     restart: unless-stopped
     depends_on:

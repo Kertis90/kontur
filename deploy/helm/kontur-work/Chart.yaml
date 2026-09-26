@@ -2,6 +2,6 @@ apiVersion: v2
 name: kontur-work
 description: Русскоязычная self-hosted платформа управления проектами
 type: application
-version: 0.23.0
-appVersion: "0.23.0"
+version: 0.23.1
+appVersion: "0.23.1"
 kubeVersion: ">=1.27.0-0"

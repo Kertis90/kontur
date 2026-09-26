@@ -1,7 +1,8 @@
 # Isolated restore drill. No published ports or connection to the production network.
 services:
   mysql-restore:
-    image: mysql:8.4
+    # Проверка восстановления использует тот же источник образа, что и установка.
+    image: ${MYSQL_IMAGE:-mysql:8.4}
     environment:
       MYSQL_ROOT_PASSWORD: ${RESTORE_MYSQL_PASSWORD:?Set RESTORE_MYSQL_PASSWORD}
       MYSQL_DATABASE: ${RESTORE_MYSQL_DATABASE:-kontur_restore_drill}

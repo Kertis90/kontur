@@ -4,7 +4,8 @@ services:
   mysql:
     profiles: [mysql-disabled]
   postgres:
-    image: postgres:18-bookworm
+    # В закрытой сети используется копия PostgreSQL из своего реестра.
+    image: ${POSTGRES_IMAGE:-postgres:18-bookworm}
     restart: unless-stopped
     environment:
       POSTGRES_DB: ${POSTGRES_DATABASE:-kontur_work}

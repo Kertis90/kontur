@@ -33,6 +33,11 @@ spec:
       hostNetwork: true
       dnsPolicy: ClusterFirstWithHostNet
       terminationGracePeriodSeconds: {{ .Values.livekit.terminationGracePeriodSeconds }}
+      {{- /* Использует общий доступ к реестру и для образа медиасервера. */}}
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
       containers:
         - name: livekit
           image: "{{ .Values.livekit.image.repository }}:{{ .Values.livekit.image.tag }}"

@@ -1,7 +1,8 @@
 # Отдельный стенд восстановления без опубликованных портов и доступа к рабочей сети.
 services:
   postgres-restore:
-    image: postgres:18-bookworm
+    # Проверка восстановления использует тот же источник образа, что и установка.
+    image: ${POSTGRES_IMAGE:-postgres:18-bookworm}
     environment:
       POSTGRES_PASSWORD: ${RESTORE_POSTGRES_PASSWORD:?Set RESTORE_POSTGRES_PASSWORD}
       POSTGRES_DB: ${RESTORE_POSTGRES_DATABASE:-kontur_restore_drill}
